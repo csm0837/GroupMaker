@@ -43,8 +43,24 @@ def extract_major(학과: str) -> str:
     """학과에서 전공 분류 추출"""
     if pd.isna(학과):
         return ""
-    학과 = str(학과)
-    if "의" in 학과:
+    학과 = str(학과).strip()
+    
+    # 의·치·한·간 약칭 처리
+    if 학과 in ["의", "치", "한", "간"]:
+        if 학과 == "의":
+            return "의대"
+        elif 학과 == "치":
+            return "치대"
+        elif 학과 == "한":
+            return "한의대"
+        elif 학과 == "간":
+            return "간호대"
+    
+    # 전체 학과명 처리
+    if "의공학과" in 학과 or "약학과" in 학과:
+        return "기타"  # 의공학과, 약학과는 기타로 분류
+    
+    if "의" in 학과 and "한의" not in 학과:
         return "의대"
     elif "치" in 학과:
         return "치대"
@@ -59,23 +75,40 @@ def extract_region(학교: str) -> str:
     """학교에서 지역 추출"""
     if pd.isna(학교):
         return ""
-    학교 = str(학교)
-    if "서울" in 학교 or "연세" in 학교 or "고려" in 학교 or "성균관" in 학교:
-        return "서울"
-    elif "부산" in 학교 or "경남" in 학교:
-        return "부산/경남"
+    학교 = str(학교).strip()
+    
+    # 서울‧경기
+    if "서울" in 학교 or "연세" in 학교 or "고려" in 학교 or "성균관" in 학교 or "경기" in 학교:
+        return "서울‧경기"
+    
+    # 대구‧경북
     elif "대구" in 학교 or "경북" in 학교:
-        return "대구/경북"
-    elif "인천" in 학교 or "경기" in 학교:
-        return "인천/경기"
-    elif "광주" in 학교 or "전남" in 학교 or "전북" in 학교:
-        return "광주/전라"
-    elif "대전" in 학교 or "충남" in 학교 or "충북" in 학교:
-        return "대전/충청"
+        return "대구‧경북"
+    
+    # 부산‧경남
+    elif "부산" in 학교 or "경남" in 학교:
+        return "부산‧경남"
+    
+    # 전북
+    elif "전북" in 학교:
+        return "전북"
+    
+    # 충북·천안
+    elif "충북" in 학교 or "천안" in 학교:
+        return "충북·천안"
+    
+    # 강원
     elif "강원" in 학교:
         return "강원"
-    elif "제주" in 학교:
-        return "제주"
+    
+    # 광주‧전남
+    elif "광주" in 학교 or "전남" in 학교:
+        return "광주‧전남"
+    
+    # 대전‧충남
+    elif "대전" in 학교 or "충남" in 학교:
+        return "대전‧충남"
+    
     else:
         return "기타"
 
