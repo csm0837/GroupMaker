@@ -152,96 +152,139 @@ def calculate_group_stats(group: Dict) -> Dict:
     }
 
 def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int = 6, max_members: int = 8) -> pd.DataFrame:
-    """조 배정 메인 로직"""
-    # 데이터 전처리
-    leaders['school_code'] = leaders['학교/학년'].apply(canonical_school)
-    members['school_code'] = members['캠퍼스'].apply(canonical_school)
-    members['major'] = members['학과'].apply(extract_major)
-    members['region'] = members['캠퍼스'].apply(extract_region)
+    """조 배정 메인 함수"""
     
-    # 조장/헬퍼 명단에서 실제 조 번호 확인
+    # 조장/헬퍼 데이터에서 조 번호 추출
     available_groups = sorted(leaders['조 숫자'].unique(), key=lambda x: int(x))
     print(f"사용 가능한 조 번호: {available_groups}")
-    print(f"조원 인원 범위: {min_members}-{max_members}명")
     
-    # 전체 성비 계산
-    total_male = sum(1 for m in members.to_dict('records') if m['성별'] == '남')
-    total_female = sum(1 for m in members.to_dict('records') if m['성별'] == '여')
-    target_male_ratio = total_male / (total_male + total_female)
-    
-    # 기본 그룹 구성 (조장/헬퍼 명단 기준으로만)
+    # 그룹 초기화
     groups = {}
     for grp_num in available_groups:
-        grp_df = leaders[leaders['조 숫자'] == grp_num]
+        leader_df = leaders[leaders['조 숫자'] == grp_num]
+        helper_df = leaders[leaders['조 숫자'] == grp_num]
         
-        # 조장과 헬퍼 데이터 찾기
-        leader_df = grp_df[grp_df['조장or헬퍼'] == '조장']
-        helper_df = grp_df[grp_df['조장or헬퍼'] == '헬퍼']
-        
-        # 데이터가 없는 경우 처리
-        if leader_df.empty:
-            print(f"경고: 조 {grp_num}에 조장이 없습니다. 이 조를 건너뜁니다.")
-            continue
-        if helper_df.empty:
-            print(f"경고: 조 {grp_num}에 헬퍼가 없습니다. 이 조를 건너뜁니다.")
+        # 조장 찾기
+        leader_row = leader_df[leader_df['역할'] == '조장']
+        if leader_row.empty:
+            print(f"경고: 조 {grp_num}에 조장이 없습니다.")
             continue
         
-        leader = leader_df.iloc[0].to_dict()
-        helper = helper_df.iloc[0].to_dict()
+        # 헬퍼 찾기
+        helper_row = helper_df[helper_df['역할'] == '헬퍼']
+        if helper_row.empty:
+            print(f"경고: 조 {grp_num}에 헬퍼가 없습니다.")
+            continue
         
-        groups[int(grp_num)] = {
-            '조 번호': int(grp_num),
-            'leader': leader,
-            'helper': helper,
+        groups[str(grp_num)] = {
+            '조 번호': str(grp_num),
+            'leader': leader_row.iloc[0].to_dict(),
+            'helper': helper_row.iloc[0].to_dict(),
             'members': [],
-            'used_schools': {canonical_school(leader.get('학교/학년', '')), canonical_school(helper.get('학교/학년', ''))},
-            'used_regions': {extract_region(leader.get('학교/학년', '')), extract_region(helper.get('학교/학년', ''))}
+            'used_schools': set(),
+            'used_regions': set(),
+            'age_distribution': []  # 연령 분포 추적
         }
     
     if not groups:
         raise ValueError("유효한 조장/헬퍼 데이터가 없습니다.")
     
     print(f"생성된 조 수: {len(groups)}")
+    print(f"조원 인원 범위: {min_members}-{max_members}명")
     
-    # 조원을 여러 단계로 나누어 배정
+    # 조원을 연령대별로 분류
     members_list = members.to_dict('records')
-    random.shuffle(members_list)  # 랜덤화
     
-    # 1단계: 필수 조건만 고려하여 기본 배정
+    # 연령대별 분류 (5세 단위)
+    age_groups = {}
     for member in members_list:
-        assigned = False
-        for group in groups.values():
-            if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions']):
-                group['members'].append(member)
-                group['used_schools'].add(canonical_school(member.get('캠퍼스', '')))
-                group['used_regions'].add(extract_region(member.get('캠퍼스', '')))
-                assigned = True
-                break
+        age = member.get('나이', 0)
+        age_group = (age // 5) * 5  # 20-24, 25-29, 30-34 등
+        if age_group not in age_groups:
+            age_groups[age_group] = []
+        age_groups[age_group].append(member)
+    
+    print(f"연령대별 분포: {[(k, len(v)) for k, v in sorted(age_groups.items())]}")
+    
+    # 1단계: 연령대별 균형 배정
+    for age_group, age_members in sorted(age_groups.items()):
+        random.shuffle(age_members)  # 각 연령대 내에서 랜덤화
         
-        if not assigned:
-            # 조건을 만족하는 조가 없으면 가장 적은 조에 배정
-            min_group = min(groups.values(), key=lambda g: len(g['members']))
-            min_group['members'].append(member)
-            min_group['used_schools'].add(canonical_school(member.get('캠퍼스', '')))
-            min_group['used_regions'].add(extract_region(member.get('캠퍼스', '')))
+        for member in age_members:
+            assigned = False
+            
+            # 가능한 조들을 연령 분포를 고려하여 평가
+            candidate_groups = []
+            for group in groups.values():
+                if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions']):
+                    # 연령 분포 점수 계산
+                    age_score = calculate_age_distribution_score(group, member)
+                    candidate_groups.append((group, age_score))
+            
+            if candidate_groups:
+                # 연령 분포 점수가 가장 좋은 조 선택
+                candidate_groups.sort(key=lambda x: x[1], reverse=True)
+                best_group = candidate_groups[0][0]
+                
+                best_group['members'].append(member)
+                best_group['used_schools'].add(canonical_school(member.get('캠퍼스', '')))
+                best_group['used_regions'].add(extract_region(member.get('캠퍼스', '')))
+                best_group['age_distribution'].append(member.get('나이', 0))
+                assigned = True
+            
+            if not assigned:
+                # 조건을 만족하는 조가 없으면 가장 적은 조에 배정
+                min_group = min(groups.values(), key=lambda g: len(g['members']))
+                min_group['members'].append(member)
+                min_group['used_schools'].add(canonical_school(member.get('캠퍼스', '')))
+                min_group['used_regions'].add(extract_region(member.get('캠퍼스', '')))
+                min_group['age_distribution'].append(member.get('나이', 0))
     
     # 2단계: 최소 인원 조건 확인 및 조정
     for group in groups.values():
         if len(group['members']) < min_members:
             print(f"경고: 조 {group['조 번호']}의 조원이 {len(group['members'])}명으로 최소 인원({min_members}명)에 미달합니다.")
     
-    # 3단계: 최적화 (성비, 학과 분포, 지역 다양성)
-    for _ in range(3):  # 3번 반복하여 최적화
+    # 3단계: 연령 분포 최적화
+    for _ in range(2):  # 2번 반복하여 연령 분포 최적화
         for group in groups.values():
             if len(group['members']) < min_members:
                 continue
-                
-            stats = calculate_group_stats(group)
             
-            # 성비 최적화
-            if not stats['conditions_met']['성비_균형']:
-                # 성비가 맞지 않으면 조원 교체 시도
-                pass  # 복잡한 로직은 생략
+            # 현재 조의 연령 분포 점수 계산
+            current_score = calculate_group_age_score(group)
+            
+            # 다른 조와 연령 분포 교환 시도
+            for other_group in groups.values():
+                if other_group == group or len(other_group['members']) < min_members:
+                    continue
+                
+                # 조원 교환 시도
+                for i, member1 in enumerate(group['members']):
+                    for j, member2 in enumerate(other_group['members']):
+                        # 교환 가능성 확인
+                        if (can_assign_to_group(other_group, member1, other_group['used_schools'], other_group['used_regions']) and
+                            can_assign_to_group(group, member2, group['used_schools'], group['used_regions'])):
+                            
+                            # 교환 후 점수 계산
+                            temp_group1 = group.copy()
+                            temp_group2 = other_group.copy()
+                            
+                            temp_group1['members'][i] = member2
+                            temp_group2['members'][j] = member1
+                            
+                            new_score1 = calculate_group_age_score(temp_group1)
+                            new_score2 = calculate_group_age_score(temp_group2)
+                            
+                            # 전체 점수가 개선되면 교환
+                            if new_score1 + new_score2 > current_score + calculate_group_age_score(other_group):
+                                group['members'][i] = member2
+                                other_group['members'][j] = member1
+                                
+                                # 연령 분포 업데이트
+                                group['age_distribution'][i] = member2.get('나이', 0)
+                                other_group['age_distribution'][j] = member1.get('나이', 0)
+                                break
     
     # 결과 데이터프레임 생성
     rows = []
@@ -255,7 +298,9 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
             '학번': group['leader'].get('학번', ''),
             '나이': group['leader'].get('나이', 0),
             '학교': group['leader'].get('학교/학년', ''),
-            '성별': group['leader'].get('성별', '')
+            '성별': group['leader'].get('성별', ''),
+            '전화번호': group['leader'].get('전화번호', ''),
+            '트랙': group['leader'].get('트랙', 'EBS')
         })
         
         # 헬퍼
@@ -267,7 +312,9 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
             '학번': group['helper'].get('학번', ''),
             '나이': group['helper'].get('나이', 0),
             '학교': group['helper'].get('학교/학년', ''),
-            '성별': group['helper'].get('성별', '')
+            '성별': group['helper'].get('성별', ''),
+            '전화번호': group['helper'].get('전화번호', ''),
+            '트랙': group['helper'].get('트랙', 'EBS')
         })
         
         # 조원들
@@ -280,10 +327,58 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 '학번': member.get('학번', ''),
                 '나이': member.get('나이', 0),
                 '학교': member.get('캠퍼스', ''),
-                '성별': member.get('성별', '')
+                '성별': member.get('성별', ''),
+                '전화번호': member.get('전화번호', ''),
+                '트랙': member.get('트랙', 'EBS')
             })
     
     return pd.DataFrame(rows)
+
+def calculate_age_distribution_score(group: Dict, new_member: Dict) -> float:
+    """조에 새로운 멤버를 추가했을 때의 연령 분포 점수 계산"""
+    current_ages = group['age_distribution'].copy()
+    new_age = new_member.get('나이', 0)
+    current_ages.append(new_age)
+    
+    if len(current_ages) <= 1:
+        return 1.0  # 첫 번째 멤버는 높은 점수
+    
+    # 연령 분산 계산 (분산이 클수록 다양함)
+    mean_age = sum(current_ages) / len(current_ages)
+    variance = sum((age - mean_age) ** 2 for age in current_ages) / len(current_ages)
+    
+    # 연령대별 균형 점수
+    age_groups = {}
+    for age in current_ages:
+        age_group = (age // 5) * 5
+        age_groups[age_group] = age_groups.get(age_group, 0) + 1
+    
+    # 연령대가 다양할수록 높은 점수
+    diversity_score = len(age_groups) / max(len(current_ages), 1)
+    
+    # 분산과 다양성을 결합한 점수
+    score = (variance * 0.7 + diversity_score * 0.3) / 100  # 정규화
+    
+    return score
+
+def calculate_group_age_score(group: Dict) -> float:
+    """조의 현재 연령 분포 점수 계산"""
+    ages = group['age_distribution']
+    if len(ages) <= 1:
+        return 1.0
+    
+    mean_age = sum(ages) / len(ages)
+    variance = sum((age - mean_age) ** 2 for age in ages) / len(ages)
+    
+    age_groups = {}
+    for age in ages:
+        age_group = (age // 5) * 5
+        age_groups[age_group] = age_groups.get(age_group, 0) + 1
+    
+    diversity_score = len(age_groups) / max(len(ages), 1)
+    
+    score = (variance * 0.7 + diversity_score * 0.3) / 100
+    return score
 
 def generate_summary_report(groups: Dict, output_file: str):
     """조별 요약 보고서 생성"""
