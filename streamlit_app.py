@@ -158,24 +158,15 @@ def main():
         # 성비 설정
         st.subheader("🎯 성비 설정")
         
-        total_gender_ratio = st.slider(
-            "전체 인원 대비 남성 비율",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.5,
-            step=0.1,
-            help="전체 인원 중 남성의 비율 (0.5 = 50%)"
-        )
-        
         max_gender_diff = st.slider(
             "성비 차이 허용 범위",
             min_value=0,
             max_value=3,
             value=1,
-            help="전체 인원 대비 성비 차이 허용 범위 (명)"
+            help="전체 데이터 성비 대비 차이나는 인원수 허용 범위 (명)"
         )
         
-        st.info(f"성비 설정: 남성 {total_gender_ratio:.1%}, 최대 {max_gender_diff}명 차이 허용")
+        st.info(f"성비 설정: 전체 데이터 성비 기준, 최대 {max_gender_diff}명 차이 허용")
     
     # 파일 업로드
     st.header("📁 파일 업로드")
@@ -225,7 +216,7 @@ def main():
                 leaders, members = load_data(leaders_path, members_path)
                 
                 # 조 배정 실행
-                df_assigned = assign_groups(leaders, members, min_members, max_members, total_gender_ratio, max_gender_diff)
+                df_assigned = assign_groups(leaders, members, min_members, max_members, max_gender_diff)
                 
                 # 그룹 정보 재구성
                 groups = {}
@@ -254,13 +245,13 @@ def main():
                 os.unlink(members_path)
                 
                 # 결과 표시
-                display_results(groups, summary_df, df_assigned, min_members, max_members, total_gender_ratio, max_gender_diff)
+                display_results(groups, summary_df, df_assigned, min_members, max_members, max_gender_diff)
                 
         except Exception as e:
             st.error(f"조 배정 중 오류가 발생했습니다: {str(e)}")
             st.exception(e)
 
-def display_results(groups, summary_df, df_assigned, min_members, max_members, total_gender_ratio, max_gender_diff):
+def display_results(groups, summary_df, df_assigned, min_members, max_members, max_gender_diff):
     """결과 표시"""
     
     st.success("🎉 조 배정이 완료되었습니다!")

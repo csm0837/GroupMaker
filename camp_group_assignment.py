@@ -182,13 +182,26 @@ def calculate_group_stats(group: Dict) -> Dict:
     }
 
 def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int = 6, max_members: int = 8, 
-                 total_gender_ratio: float = 0.5, max_gender_diff: int = 1) -> pd.DataFrame:
+                 max_gender_diff: int = 1) -> pd.DataFrame:
     """조 배정 메인 함수"""
     
     # 디버깅: 컬럼명 확인
     print(f"조장/헬퍼 파일 컬럼: {list(leaders.columns)}")
     print(f"조원 파일 컬럼: {list(members.columns)}")
-    print(f"성비 설정: 전체 대비 {total_gender_ratio:.1%} 남성, 최대 {max_gender_diff}명 차이 허용")
+    
+    # 전체 데이터의 실제 성비 계산
+    all_members_data = members.to_dict('records')
+    total_male = sum(1 for m in all_members_data if m['성별'] == '남')
+    total_female = sum(1 for m in all_members_data if m['성별'] == '여')
+    total_members = total_male + total_female
+    
+    if total_members > 0:
+        actual_gender_ratio = total_male / total_members
+    else:
+        actual_gender_ratio = 0.5  # 기본값
+    
+    print(f"전체 데이터 성비: 남성 {total_male}명, 여성 {total_female}명 (남성 비율: {actual_gender_ratio:.1%})")
+    print(f"성비 차이 허용 범위: {max_gender_diff}명")
     
     # 조장/헬퍼 데이터에서 조 번호 추출
     available_groups = sorted(leaders['조 숫자'].unique(), key=lambda x: int(x))
@@ -266,9 +279,9 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
             # 가능한 조들을 성비와 연령 분포를 고려하여 평가
             candidate_groups = []
             for group in groups.values():
-                if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions'], total_gender_ratio, max_gender_diff):
+                if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions'], actual_gender_ratio, max_gender_diff):
                     # 성비 점수 계산 (높은 우선순위)
-                    gender_score = calculate_gender_balance_score(group, member, total_gender_ratio)
+                    gender_score = calculate_gender_balance_score(group, member, actual_gender_ratio)
                     # 연령 분포 점수 계산 (중간 우선순위)
                     age_score = calculate_age_distribution_score(group, member)
                     # 학과 분포 점수 계산 (중간 우선순위)
@@ -314,7 +327,7 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 continue
             
             # 현재 조의 종합 점수 계산
-            current_gender_score = calculate_group_gender_score(group, total_gender_ratio)
+            current_gender_score = calculate_group_gender_score(group, actual_gender_ratio)
             current_age_score = calculate_group_age_score(group)
             current_major_score = calculate_group_major_score(group)
             current_region_score = calculate_group_region_score(group)
@@ -332,8 +345,8 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 for i, member1 in enumerate(group['members']):
                     for j, member2 in enumerate(other_group['members']):
                         # 교환 가능성 확인
-                        if (can_assign_to_group(other_group, member1, other_group['used_schools'], other_group['used_regions'], total_gender_ratio, max_gender_diff) and
-                            can_assign_to_group(group, member2, group['used_schools'], group['used_regions'], total_gender_ratio, max_gender_diff)):
+                        if (can_assign_to_group(other_group, member1, other_group['used_schools'], other_group['used_regions'], actual_gender_ratio, max_gender_diff) and
+                            can_assign_to_group(group, member2, group['used_schools'], group['used_regions'], actual_gender_ratio, max_gender_diff)):
                             
                             # 교환 후 점수 계산
                             temp_group1 = group.copy()
@@ -342,7 +355,7 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                             temp_group1['members'][i] = member2
                             temp_group2['members'][j] = member1
                             
-                            new_gender_score1 = calculate_group_gender_score(temp_group1, total_gender_ratio)
+                            new_gender_score1 = calculate_group_gender_score(temp_group1, actual_gender_ratio)
                             new_age_score1 = calculate_group_age_score(temp_group1)
                             new_major_score1 = calculate_group_major_score(temp_group1)
                             new_region_score1 = calculate_group_region_score(temp_group1)
@@ -351,7 +364,7 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                                               new_major_score1 * 0.2 + 
                                               new_region_score1 * 0.15)
                             
-                            new_gender_score2 = calculate_group_gender_score(temp_group2, total_gender_ratio)
+                            new_gender_score2 = calculate_group_gender_score(temp_group2, actual_gender_ratio)
                             new_age_score2 = calculate_group_age_score(temp_group2)
                             new_major_score2 = calculate_group_major_score(temp_group2)
                             new_region_score2 = calculate_group_region_score(temp_group2)
@@ -360,7 +373,7 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                                               new_major_score2 * 0.2 + 
                                               new_region_score2 * 0.15)
                             
-                            other_gender_score = calculate_group_gender_score(other_group, total_gender_ratio)
+                            other_gender_score = calculate_group_gender_score(other_group, actual_gender_ratio)
                             other_age_score = calculate_group_age_score(other_group)
                             other_major_score = calculate_group_major_score(other_group)
                             other_region_score = calculate_group_region_score(other_group)
@@ -696,7 +709,6 @@ def main():
     parser.add_argument('--out', default='final_group_assignment.csv', help="출력 CSV 파일")
     parser.add_argument('--min-members', type=int, default=6, help="각 조 최소 조원 수 (기본값: 6)")
     parser.add_argument('--max-members', type=int, default=8, help="각 조 최대 조원 수 (기본값: 8)")
-    parser.add_argument('--gender-ratio', type=float, default=0.5, help="전체 인원 대비 남성 비율 (기본값: 0.5)")
     parser.add_argument('--max-gender-diff', type=int, default=1, help="성비 차이 허용 범위 (기본값: 1)")
     args = parser.parse_args()
     
@@ -704,7 +716,7 @@ def main():
     leaders, members = load_data(args.leaders, args.members)
     
     print("조 배정 중...")
-    df_assigned = assign_groups(leaders, members, args.min_members, args.max_members, args.gender_ratio, args.max_gender_diff)
+    df_assigned = assign_groups(leaders, members, args.min_members, args.max_members, args.max_gender_diff)
     
     print("결과 저장 중...")
     df_assigned.to_csv(args.out, index=False, encoding='utf-8-sig')
