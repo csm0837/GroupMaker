@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>수련회 조 배정 시스템</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        .upload-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .upload-header h1 {
+            color: #2c3e50;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .upload-header p {
+            color: #7f8c8d;
+            font-size: 1.1em;
+        }
+        .file-upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            background: #f8f9fa;
+        }
+        .file-upload-area:hover {
+            border-color: #764ba2;
+            background: #e9ecef;
+        }
+        .file-upload-area.dragover {
+            border-color: #28a745;
+            background: #d4edda;
+        }
+        .file-input {
+            display: none;
+        }
+        .file-label {
+            cursor: pointer;
+            padding: 12px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            display: inline-block;
+        }
+        .file-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        .settings-section {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+        }
+        .settings-section h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+        .form-control {
+            border-radius: 10px;
+            border: 2px solid #e9ecef;
+            padding: 12px 15px;
+            transition: all 0.3s ease;
+        }
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        .btn-upload {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 25px;
+            font-weight: 600;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+        .btn-upload:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+        .btn-upload:disabled {
+            background: #6c757d;
+            transform: none;
+            box-shadow: none;
+        }
+        .alert {
+            border-radius: 10px;
+            border: none;
+        }
+        .file-info {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        .range-info {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="upload-card">
+            <div class="upload-header">
+                <h1><i class="fas fa-users"></i> 수련회 조 배정 시스템</h1>
+                <p>조장/헬퍼 명단과 조원 명단을 업로드하여 자동으로 조를 배정하세요.</p>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-danger" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i> {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('upload_files') }}" enctype="multipart/form-data" id="uploadForm">
+                <!-- 파일 업로드 섹션 -->
+                <div class="file-upload-area" id="uploadArea">
+                    <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                    <h4>파일 업로드</h4>
+                    <p class="text-muted">조장/헬퍼 명단과 조원 명단 Excel 파일을 업로드하세요.</p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="leaders_file" class="file-label">
+                                <i class="fas fa-file-excel"></i> 조장/헬퍼 명단 선택
+                            </label>
+                            <input type="file" id="leaders_file" name="leaders_file" class="file-input" accept=".xlsx,.xls" required>
+                            <div class="file-info" id="leaders_info"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="members_file" class="file-label">
+                                <i class="fas fa-file-excel"></i> 조원 명단 선택
+                            </label>
+                            <input type="file" id="members_file" name="members_file" class="file-input" accept=".xlsx,.xls" required>
+                            <div class="file-info" id="members_info"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 설정 섹션 -->
+                <div class="settings-section">
+                    <h4><i class="fas fa-cog"></i> 조 배정 설정</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="min_members" class="form-label">각 조 최소 인원</label>
+                            <input type="number" class="form-control" id="min_members" name="min_members" 
+                                   value="6" min="3" max="10" required>
+                            <div class="range-info">
+                                <i class="fas fa-info-circle"></i> 
+                                조장과 헬퍼를 제외한 최소 조원 수 (3-10명)
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="max_members" class="form-label">각 조 최대 인원</label>
+                            <input type="number" class="form-control" id="max_members" name="max_members" 
+                                   value="8" min="5" max="12" required>
+                            <div class="range-info">
+                                <i class="fas fa-info-circle"></i> 
+                                조장과 헬퍼를 제외한 최대 조원 수 (5-12명)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-upload" id="submitBtn" disabled>
+                    <i class="fas fa-magic"></i> 조 배정 시작
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 파일 업로드 처리
+        const leadersFile = document.getElementById('leaders_file');
+        const membersFile = document.getElementById('members_file');
+        const leadersInfo = document.getElementById('leaders_info');
+        const membersInfo = document.getElementById('members_info');
+        const submitBtn = document.getElementById('submitBtn');
+        const uploadArea = document.getElementById('uploadArea');
+
+        function updateFileInfo(input, infoElement) {
+            if (input.files.length > 0) {
+                const file = input.files[0];
+                infoElement.innerHTML = `<i class="fas fa-check text-success"></i> ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+            } else {
+                infoElement.innerHTML = '';
+            }
+            checkFormValidity();
+        }
+
+        function checkFormValidity() {
+            const hasLeaders = leadersFile.files.length > 0;
+            const hasMembers = membersFile.files.length > 0;
+            const minMembers = parseInt(document.getElementById('min_members').value);
+            const maxMembers = parseInt(document.getElementById('max_members').value);
+            
+            if (hasLeaders && hasMembers && minMembers <= maxMembers) {
+                submitBtn.disabled = false;
+            } else {
+                submitBtn.disabled = true;
+            }
+        }
+
+        leadersFile.addEventListener('change', () => updateFileInfo(leadersFile, leadersInfo));
+        membersFile.addEventListener('change', () => updateFileInfo(membersFile, membersInfo));
+
+        // 인원 범위 검증
+        document.getElementById('min_members').addEventListener('change', checkFormValidity);
+        document.getElementById('max_members').addEventListener('change', checkFormValidity);
+
+        // 드래그 앤 드롭
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length >= 2) {
+                leadersFile.files = files[0];
+                membersFile.files = files[1];
+                updateFileInfo(leadersFile, leadersInfo);
+                updateFileInfo(membersFile, membersInfo);
+            }
+        });
+    </script>
+</body>
+</html> 

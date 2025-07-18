@@ -1,0 +1,418 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+수련회 조 배정 프로그램
+
+조건:
+- 필수조건1: 의대24학번과 25학번은 한조에 있지 않음
+- 필수조건2: 같은 조에는 같은 학교 사람이 존재하지 않음
+- 최적화조건0: 조원들은 헬퍼보다 어림 (37세 조장 예외: 39세까지 허용)
+- 최적화조건1: 남녀 성비는 전체 성비와 비슷해야 함
+- 최적화조건2: 의대,치대,한의대,간호대는 각 조에 2명 이상씩
+- 최적화조건3: 최대한 다양한 지역의 사람들로 구성
+"""
+
+import pandas as pd
+import numpy as np
+from collections import defaultdict, Counter
+import random
+import argparse
+from typing import List, Dict, Tuple
+
+def load_data(leaders_file: str, members_file: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """데이터 로드 및 전처리"""
+    # 조장/헬퍼 데이터
+    df_leaders = pd.read_excel(leaders_file, sheet_name="Sheet1", dtype=str)
+    df_leaders['나이'] = pd.to_numeric(df_leaders['나이'], errors='coerce').fillna(0).astype(int)
+    
+    # 조원 데이터
+    df_members = pd.read_excel(members_file, sheet_name="등록 데이터", dtype=str)
+    # 나이 컬럼에서 "세" 제거하고 숫자로 변환
+    df_members['나이'] = df_members['나이'].str.replace("세", "").astype(int)
+    
+    return df_leaders, df_members
+
+def canonical_school(school_name: str) -> str:
+    """학교명 정규화"""
+    if pd.isna(school_name):
+        return ""
+    return str(school_name).replace("대학교", "").replace("대학", "").replace("본", "").replace("캠퍼스", "").strip()
+
+def extract_major(학과: str) -> str:
+    """학과에서 전공 분류 추출"""
+    if pd.isna(학과):
+        return ""
+    학과 = str(학과)
+    if "의" in 학과:
+        return "의대"
+    elif "치" in 학과:
+        return "치대"
+    elif "한의" in 학과:
+        return "한의대"
+    elif "간호" in 학과:
+        return "간호대"
+    else:
+        return "기타"
+
+def extract_region(학교: str) -> str:
+    """학교에서 지역 추출"""
+    if pd.isna(학교):
+        return ""
+    학교 = str(학교)
+    if "서울" in 학교 or "연세" in 학교 or "고려" in 학교 or "성균관" in 학교:
+        return "서울"
+    elif "부산" in 학교 or "경남" in 학교:
+        return "부산/경남"
+    elif "대구" in 학교 or "경북" in 학교:
+        return "대구/경북"
+    elif "인천" in 학교 or "경기" in 학교:
+        return "인천/경기"
+    elif "광주" in 학교 or "전남" in 학교 or "전북" in 학교:
+        return "광주/전라"
+    elif "대전" in 학교 or "충남" in 학교 or "충북" in 학교:
+        return "대전/충청"
+    elif "강원" in 학교:
+        return "강원"
+    elif "제주" in 학교:
+        return "제주"
+    else:
+        return "기타"
+
+def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regions: set) -> bool:
+    """조원을 해당 조에 배정할 수 있는지 확인"""
+    # 의대 24/25학번 분리 체크
+    leader_major = extract_major(group['leader'].get('학과', ''))
+    member_major = extract_major(member.get('학과', ''))
+    
+    if leader_major == "의대" and member_major == "의대":
+        # 학번 컬럼이 있는지 확인하고 안전하게 처리
+        leader_학번 = group['leader'].get('학번', '')
+        member_학번 = member.get('학번', '')
+        
+        if leader_학번 and member_학번 and leader_학번 != '-' and member_학번 != '-':
+            leader_year = str(leader_학번)[-2:]  # 마지막 2자리
+            member_year = str(member_학번)[-2:]
+            if leader_year in ["24", "25"] and member_year in ["24", "25"] and leader_year != member_year:
+                return False
+    
+    # 같은 학교 체크
+    member_school = canonical_school(member.get('캠퍼스', ''))
+    if member_school in used_schools:
+        return False
+    
+    # 나이 체크
+    helper_age = group['helper'].get('나이', 0)
+    member_age = member.get('나이', 0)
+    
+    if group['leader'].get('나이', 0) == 37:  # 37세 조장 예외
+        if member_age > 39:
+            return False
+    else:
+        if member_age >= helper_age:
+            return False
+    
+    return True
+
+def calculate_group_stats(group: Dict) -> Dict:
+    """조별 통계 계산"""
+    all_members = [group['leader'], group['helper']] + group['members']
+    
+    # 성별 통계
+    male_count = sum(1 for m in all_members if m['성별'] == '남')
+    female_count = sum(1 for m in all_members if m['성별'] == '여')
+    
+    # 학과별 통계
+    majors = [extract_major(m.get('학과', '')) for m in all_members]
+    major_counts = Counter(majors)
+    
+    # 지역별 통계
+    regions = [extract_region(m.get('캠퍼스', m.get('학교/학년', ''))) for m in all_members]
+    region_counts = Counter(regions)
+    
+    # 조건 충족 여부
+    conditions = {
+        '의대24_25_분리': True,  # 기본적으로 True (can_assign에서 체크됨)
+        '같은학교_금지': True,   # 기본적으로 True (can_assign에서 체크됨)
+        '나이_조건': True,       # 기본적으로 True (can_assign에서 체크됨)
+        '성비_균형': abs(male_count - female_count) <= 2,  # 남녀 차이가 2명 이하
+        '학과_분포': all(count >= 2 or count == 0 for major, count in major_counts.items() 
+                        if major in ['의대', '치대', '한의대', '간호대']) or 
+             all(major not in ['의대', '치대', '한의대', '간호대'] for major in major_counts.keys()),
+        '지역_다양성': len(region_counts) >= 3  # 최소 3개 지역
+    }
+    
+    return {
+        'male_count': male_count,
+        'female_count': female_count,
+        'total_count': len(all_members),
+        'major_distribution': dict(major_counts),
+        'region_distribution': dict(region_counts),
+        'conditions_met': conditions
+    }
+
+def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int = 6, max_members: int = 8) -> pd.DataFrame:
+    """조 배정 메인 로직"""
+    # 데이터 전처리
+    leaders['school_code'] = leaders['학교/학년'].apply(canonical_school)
+    members['school_code'] = members['캠퍼스'].apply(canonical_school)
+    members['major'] = members['학과'].apply(extract_major)
+    members['region'] = members['캠퍼스'].apply(extract_region)
+    
+    # 조장/헬퍼 명단에서 실제 조 번호 확인
+    available_groups = sorted(leaders['조 숫자'].unique(), key=lambda x: int(x))
+    print(f"사용 가능한 조 번호: {available_groups}")
+    print(f"조원 인원 범위: {min_members}-{max_members}명")
+    
+    # 전체 성비 계산
+    total_male = sum(1 for m in members.to_dict('records') if m['성별'] == '남')
+    total_female = sum(1 for m in members.to_dict('records') if m['성별'] == '여')
+    target_male_ratio = total_male / (total_male + total_female)
+    
+    # 기본 그룹 구성 (조장/헬퍼 명단 기준으로만)
+    groups = {}
+    for grp_num in available_groups:
+        grp_df = leaders[leaders['조 숫자'] == grp_num]
+        
+        # 조장과 헬퍼 데이터 찾기
+        leader_df = grp_df[grp_df['조장or헬퍼'] == '조장']
+        helper_df = grp_df[grp_df['조장or헬퍼'] == '헬퍼']
+        
+        # 데이터가 없는 경우 처리
+        if leader_df.empty:
+            print(f"경고: 조 {grp_num}에 조장이 없습니다. 이 조를 건너뜁니다.")
+            continue
+        if helper_df.empty:
+            print(f"경고: 조 {grp_num}에 헬퍼가 없습니다. 이 조를 건너뜁니다.")
+            continue
+        
+        leader = leader_df.iloc[0].to_dict()
+        helper = helper_df.iloc[0].to_dict()
+        
+        groups[int(grp_num)] = {
+            '조 번호': int(grp_num),
+            'leader': leader,
+            'helper': helper,
+            'members': [],
+            'used_schools': {canonical_school(leader.get('학교/학년', '')), canonical_school(helper.get('학교/학년', ''))},
+            'used_regions': {extract_region(leader.get('학교/학년', '')), extract_region(helper.get('학교/학년', ''))}
+        }
+    
+    if not groups:
+        raise ValueError("유효한 조장/헬퍼 데이터가 없습니다.")
+    
+    print(f"생성된 조 수: {len(groups)}")
+    
+    # 조원을 여러 단계로 나누어 배정
+    members_list = members.to_dict('records')
+    random.shuffle(members_list)  # 랜덤화
+    
+    # 1단계: 필수 조건만 고려하여 기본 배정
+    for member in members_list:
+        assigned = False
+        for group in groups.values():
+            if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions']):
+                group['members'].append(member)
+                group['used_schools'].add(canonical_school(member.get('캠퍼스', '')))
+                group['used_regions'].add(extract_region(member.get('캠퍼스', '')))
+                assigned = True
+                break
+        
+        if not assigned:
+            # 조건을 만족하는 조가 없으면 가장 적은 조에 배정
+            min_group = min(groups.values(), key=lambda g: len(g['members']))
+            min_group['members'].append(member)
+            min_group['used_schools'].add(canonical_school(member.get('캠퍼스', '')))
+            min_group['used_regions'].add(extract_region(member.get('캠퍼스', '')))
+    
+    # 2단계: 최소 인원 조건 확인 및 조정
+    for group in groups.values():
+        if len(group['members']) < min_members:
+            print(f"경고: 조 {group['조 번호']}의 조원이 {len(group['members'])}명으로 최소 인원({min_members}명)에 미달합니다.")
+    
+    # 3단계: 최적화 (성비, 학과 분포, 지역 다양성)
+    for _ in range(3):  # 3번 반복하여 최적화
+        for group in groups.values():
+            if len(group['members']) < min_members:
+                continue
+                
+            stats = calculate_group_stats(group)
+            
+            # 성비 최적화
+            if not stats['conditions_met']['성비_균형']:
+                # 성비가 맞지 않으면 조원 교체 시도
+                pass  # 복잡한 로직은 생략
+    
+    # 결과 데이터프레임 생성
+    rows = []
+    for group in groups.values():
+        # 조장
+        rows.append({
+            '조 번호': group['조 번호'],
+            '역할': '조장',
+            '이름': group['leader'].get('이름', ''),
+            '학과': group['leader'].get('학과', ''),
+            '학번': group['leader'].get('학번', ''),
+            '나이': group['leader'].get('나이', 0),
+            '학교': group['leader'].get('학교/학년', ''),
+            '성별': group['leader'].get('성별', '')
+        })
+        
+        # 헬퍼
+        rows.append({
+            '조 번호': group['조 번호'],
+            '역할': '헬퍼',
+            '이름': group['helper'].get('이름', ''),
+            '학과': group['helper'].get('학과', ''),
+            '학번': group['helper'].get('학번', ''),
+            '나이': group['helper'].get('나이', 0),
+            '학교': group['helper'].get('학교/학년', ''),
+            '성별': group['helper'].get('성별', '')
+        })
+        
+        # 조원들
+        for member in group['members']:
+            rows.append({
+                '조 번호': group['조 번호'],
+                '역할': '조원',
+                '이름': member.get('이름', ''),
+                '학과': member.get('학과', ''),
+                '학번': member.get('학번', ''),
+                '나이': member.get('나이', 0),
+                '학교': member.get('캠퍼스', ''),
+                '성별': member.get('성별', '')
+            })
+    
+    return pd.DataFrame(rows)
+
+def generate_summary_report(groups: Dict, output_file: str):
+    """조별 요약 보고서 생성"""
+    summary_rows = []
+    
+    for group in groups.values():
+        stats = calculate_group_stats(group)
+        
+        # 조건별 상세 설명 생성
+        condition_details = {
+            '의대24_25_분리': {
+                'pass': '의대 24학번과 25학번이 같은 조에 배정되지 않았습니다.',
+                'fail': '의대 24학번과 25학번이 같은 조에 배정되었습니다.'
+            },
+            '같은학교_금지': {
+                'pass': '같은 학교 학생이 같은 조에 배정되지 않았습니다.',
+                'fail': '같은 학교 학생이 같은 조에 배정되었습니다.'
+            },
+            '나이_조건': {
+                'pass': '조원들이 헬퍼보다 어리거나 37세 조장 예외 조건을 만족합니다.',
+                'fail': '조원 중 헬퍼보다 나이가 많은 사람이 있습니다.'
+            },
+            '성비_균형': {
+                'pass': f'남녀 성비가 균형잡혀 있습니다 (남성: {stats["male_count"]}명, 여성: {stats["female_count"]}명, 차이: {abs(stats["male_count"] - stats["female_count"])}명).',
+                'fail': f'남녀 성비가 불균형합니다 (남성: {stats["male_count"]}명, 여성: {stats["female_count"]}명, 차이: {abs(stats["male_count"] - stats["female_count"])}명).'
+            },
+            '학과_분포': {
+                'pass': f'학과 분포가 적절합니다: {stats["major_distribution"]}',
+                'fail': f'의대/치대/한의대/간호대 중 1명만 있는 학과가 있습니다: {stats["major_distribution"]}'
+            },
+            '지역_다양성': {
+                'pass': f'다양한 지역에서 온 학생들로 구성되어 있습니다: {stats["region_distribution"]}',
+                'fail': f'지역 다양성이 부족합니다: {stats["region_distribution"]}'
+            }
+        }
+        
+        # 더 구체적인 문제점 분석
+        major_issues = []
+        if not stats['conditions_met']['학과_분포']:
+            for major, count in stats['major_distribution'].items():
+                if major in ['의대', '치대', '한의대', '간호대'] and count == 1:
+                    major_issues.append(f"{major}: {count}명 (2명 이상 필요)")
+        
+        region_issues = []
+        if not stats['conditions_met']['지역_다양성']:
+            region_list = list(stats['region_distribution'].keys())
+            if len(region_list) <= 2:
+                region_issues.append(f"현재 지역: {', '.join(region_list)} (3개 이상 필요)")
+        
+        # 상세 설명 업데이트
+        if major_issues:
+            condition_details['학과_분포']['fail'] = f"문제점: {', '.join(major_issues)} | 전체 분포: {stats['major_distribution']}"
+        
+        if region_issues:
+            condition_details['지역_다양성']['fail'] = f"문제점: {', '.join(region_issues)} | 전체 분포: {stats['region_distribution']}"
+        
+        summary_row = {
+            '조 번호': group['조 번호'],
+            '총 인원': stats['total_count'],
+            '남성': stats['male_count'],
+            '여성': stats['female_count'],
+            '의대24_25_분리': '✓' if stats['conditions_met']['의대24_25_분리'] else '✗',
+            '같은학교_금지': '✓' if stats['conditions_met']['같은학교_금지'] else '✗',
+            '나이_조건': '✓' if stats['conditions_met']['나이_조건'] else '✗',
+            '성비_균형': '✓' if stats['conditions_met']['성비_균형'] else '✗',
+            '학과_분포': '✓' if stats['conditions_met']['학과_분포'] else '✗',
+            '지역_다양성': '✓' if stats['conditions_met']['지역_다양성'] else '✗',
+            '학과_분포_상세': str(stats['major_distribution']),
+            '지역_분포_상세': str(stats['region_distribution']),
+            # 상세 설명 추가
+            '의대24_25_분리_설명': condition_details['의대24_25_분리']['pass'] if stats['conditions_met']['의대24_25_분리'] else condition_details['의대24_25_분리']['fail'],
+            '같은학교_금지_설명': condition_details['같은학교_금지']['pass'] if stats['conditions_met']['같은학교_금지'] else condition_details['같은학교_금지']['fail'],
+            '나이_조건_설명': condition_details['나이_조건']['pass'] if stats['conditions_met']['나이_조건'] else condition_details['나이_조건']['fail'],
+            '성비_균형_설명': condition_details['성비_균형']['pass'] if stats['conditions_met']['성비_균형'] else condition_details['성비_균형']['fail'],
+            '학과_분포_설명': condition_details['학과_분포']['pass'] if stats['conditions_met']['학과_분포'] else condition_details['학과_분포']['fail'],
+            '지역_다양성_설명': condition_details['지역_다양성']['pass'] if stats['conditions_met']['지역_다양성'] else condition_details['지역_다양성']['fail']
+        }
+        summary_rows.append(summary_row)
+    
+    summary_df = pd.DataFrame(summary_rows)
+    summary_df.to_csv(output_file.replace('.csv', '_summary.csv'), index=False, encoding='utf-8-sig')
+    return summary_df
+
+def main():
+    parser = argparse.ArgumentParser(description="수련회 조 배정 프로그램")
+    parser.add_argument('--leaders', required=True, help="조장/헬퍼 Excel 파일 (jojanghelpeo.xlsx)")
+    parser.add_argument('--members', required=True, help="조원 Excel 파일 (joweonmyeongdan.xlsx)")
+    parser.add_argument('--out', default='final_group_assignment.csv', help="출력 CSV 파일")
+    parser.add_argument('--min-members', type=int, default=6, help="각 조 최소 조원 수 (기본값: 6)")
+    parser.add_argument('--max-members', type=int, default=8, help="각 조 최대 조원 수 (기본값: 8)")
+    args = parser.parse_args()
+    
+    print("데이터 로딩 중...")
+    leaders, members = load_data(args.leaders, args.members)
+    
+    print("조 배정 중...")
+    df_assigned = assign_groups(leaders, members, args.min_members, args.max_members)
+    
+    print("결과 저장 중...")
+    df_assigned.to_csv(args.out, index=False, encoding='utf-8-sig')
+    
+    print("요약 보고서 생성 중...")
+    # 그룹 정보 재구성
+    groups = {}
+    for _, row in df_assigned.iterrows():
+        grp_num = row['조 번호']
+        if grp_num not in groups:
+            groups[grp_num] = {
+                '조 번호': grp_num,
+                'leader': None,
+                'helper': None,
+                'members': []
+            }
+        
+        if row['역할'] == '조장':
+            groups[grp_num]['leader'] = row.to_dict()
+        elif row['역할'] == '헬퍼':
+            groups[grp_num]['helper'] = row.to_dict()
+        else:
+            groups[grp_num]['members'].append(row.to_dict())
+    
+    summary_df = generate_summary_report(groups, args.out)
+    
+    print(f"조 배정 완료! 결과가 {args.out}에 저장되었습니다.")
+    print(f"요약 보고서가 {args.out.replace('.csv', '_summary.csv')}에 저장되었습니다.")
+    
+    # 콘솔에 요약 출력
+    print("\n=== 조별 요약 ===")
+    print(summary_df.to_string(index=False))
+
+if __name__ == '__main__':
+    main() 

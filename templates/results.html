@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>조 배정 결과</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        .header h1 {
+            color: #2c3e50;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.1em;
+            margin: 0;
+        }
+        .group-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .group-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+        .group-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .group-number {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        .group-stats {
+            display: flex;
+            gap: 15px;
+            font-size: 0.9em;
+        }
+        .member-row {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+        .member-row:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+        .role-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .role-leader {
+            background: #dc3545;
+            color: white;
+        }
+        .role-helper {
+            background: #fd7e14;
+            color: white;
+        }
+        .role-member {
+            background: #28a745;
+            color: white;
+        }
+        .summary-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        .summary-table {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .summary-table th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px;
+            font-weight: 600;
+        }
+        .summary-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #dee2e6;
+            vertical-align: middle;
+        }
+        .summary-table tr:hover {
+            background: #f8f9fa;
+        }
+        .condition-check {
+            font-size: 1.2em;
+            font-weight: bold;
+            cursor: help;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .condition-pass {
+            color: #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+        .condition-pass:hover {
+            background: rgba(40, 167, 69, 0.2);
+            transform: scale(1.1);
+        }
+        .condition-fail {
+            color: #dc3545;
+            background: rgba(220, 53, 69, 0.1);
+        }
+        .condition-fail:hover {
+            background: rgba(220, 53, 69, 0.2);
+            transform: scale(1.1);
+        }
+        
+        /* 툴팁 스타일 개선 */
+        .tooltip {
+            font-size: 0.9em;
+            max-width: 300px;
+        }
+        .tooltip-inner {
+            background-color: #2c3e50;
+            color: white;
+            padding: 10px 12px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            text-align: left;
+            line-height: 1.4;
+        }
+        .tooltip.bs-tooltip-top .tooltip-arrow::before {
+            border-top-color: #2c3e50;
+        }
+        .download-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+        .btn-download {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 5px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+        .btn-back {
+            background: #6c757d;
+            border: none;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-weight: 600;
+            margin: 5px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-back:hover {
+            background: #5a6268;
+            color: white;
+            transform: translateY(-2px);
+        }
+        .gender-icon {
+            margin-right: 5px;
+        }
+        .male {
+            color: #007bff;
+        }
+        .female {
+            color: #e83e8c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-users"></i> 수련회 조 배정 결과</h1>
+            <p>조 배정이 완료되었습니다. 아래에서 결과를 확인하세요.</p>
+            {% if result.settings %}
+            <div class="settings-info">
+                <span class="badge bg-primary me-2">
+                    <i class="fas fa-users"></i> 조원 범위: {{ result.settings.min_members }}-{{ result.settings.max_members }}명
+                </span>
+                <span class="badge bg-info">
+                    <i class="fas fa-layer-group"></i> 총 {{ result.total_groups }}개 조
+                </span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 요약 통계 -->
+        <div class="summary-section">
+            <h3><i class="fas fa-chart-bar"></i> 조별 요약 통계</h3>
+            <div class="table-responsive">
+                <table class="table summary-table">
+                    <thead>
+                        <tr>
+                            <th>조 번호</th>
+                            <th>총 인원</th>
+                            <th>남성</th>
+                            <th>여성</th>
+                            <th>의대24_25_분리</th>
+                            <th>같은학교_금지</th>
+                            <th>나이_조건</th>
+                            <th>성비_균형</th>
+                            <th>학과_분포</th>
+                            <th>지역_다양성</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in result.summary %}
+                        <tr>
+                            <td><strong>{{ row['조 번호'] }}</strong></td>
+                            <td>{{ row['총 인원'] }}</td>
+                            <td><i class="fas fa-mars male"></i>{{ row['남성'] }}</td>
+                            <td><i class="fas fa-venus female"></i>{{ row['여성'] }}</td>
+                            <td>
+                                <span class="condition-check {{ 'condition-pass' if row['의대24_25_분리'] == '✓' else 'condition-fail' }}" 
+                                      data-bs-toggle="tooltip" data-bs-placement="top" 
+                                      title="{{ row['의대24_25_분리_설명'] }}">
+                                    {{ row['의대24_25_분리'] }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="condition-check {{ 'condition-pass' if row['같은학교_금지'] == '✓' else 'condition-fail' }}" 
+                                      data-bs-toggle="tooltip" data-bs-placement="top" 
+                                      title="{{ row['같은학교_금지_설명'] }}">
+                                    {{ row['같은학교_금지'] }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="condition-check {{ 'condition-pass' if row['나이_조건'] == '✓' else 'condition-fail' }}" 
+                                      data-bs-toggle="tooltip" data-bs-placement="top" 
+                                      title="{{ row['나이_조건_설명'] }}">
+                                    {{ row['나이_조건'] }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="condition-check {{ 'condition-pass' if row['성비_균형'] == '✓' else 'condition-fail' }}" 
+                                      data-bs-toggle="tooltip" data-bs-placement="top" 
+                                      title="{{ row['성비_균형_설명'] }}">
+                                    {{ row['성비_균형'] }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="condition-check {{ 'condition-pass' if row['학과_분포'] == '✓' else 'condition-fail' }}" 
+                                      data-bs-toggle="tooltip" data-bs-placement="top" 
+                                      title="{{ row['학과_분포_설명'] }}">
+                                    {{ row['학과_분포'] }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="condition-check {{ 'condition-pass' if row['지역_다양성'] == '✓' else 'condition-fail' }}" 
+                                      data-bs-toggle="tooltip" data-bs-placement="top" 
+                                      title="{{ row['지역_다양성_설명'] }}">
+                                    {{ row['지역_다양성'] }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 조별 상세 정보 -->
+        <h3><i class="fas fa-list"></i> 조별 상세 정보</h3>
+        {% for group_num, group in result.groups.items() %}
+        <div class="group-card">
+            <div class="group-header">
+                <div class="group-number">
+                    <i class="fas fa-layer-group"></i> {{ group_num }}조
+                </div>
+                <div class="group-stats">
+                    <span><i class="fas fa-users"></i> 총 {{ group.stats.total_count }}명</span>
+                    <span><i class="fas fa-mars male"></i> {{ group.stats.male_count }}명</span>
+                    <span><i class="fas fa-venus female"></i> {{ group.stats.female_count }}명</span>
+                </div>
+            </div>
+            
+            <!-- 조장 -->
+            <div class="member-row">
+                <div class="row align-items-center">
+                    <div class="col-md-2">
+                        <span class="role-badge role-leader">
+                            <i class="fas fa-crown"></i> 조장
+                        </span>
+                    </div>
+                    <div class="col-md-2">
+                        <strong>{{ group.leader.이름 }}</strong>
+                        <i class="fas fa-{{ 'mars male' if group.leader.성별 == '남' else 'venus female' }} gender-icon"></i>
+                    </div>
+                    <div class="col-md-2">{{ group.leader.학과 }}</div>
+                    <div class="col-md-2">{{ group.leader.학번 }}</div>
+                    <div class="col-md-2">{{ group.leader.나이 }}세</div>
+                    <div class="col-md-2">{{ group.leader.학교 }}</div>
+                </div>
+            </div>
+            
+            <!-- 헬퍼 -->
+            <div class="member-row">
+                <div class="row align-items-center">
+                    <div class="col-md-2">
+                        <span class="role-badge role-helper">
+                            <i class="fas fa-star"></i> 헬퍼
+                        </span>
+                    </div>
+                    <div class="col-md-2">
+                        <strong>{{ group.helper.이름 }}</strong>
+                        <i class="fas fa-{{ 'mars male' if group.helper.성별 == '남' else 'venus female' }} gender-icon"></i>
+                    </div>
+                    <div class="col-md-2">{{ group.helper.학과 }}</div>
+                    <div class="col-md-2">{{ group.helper.학번 }}</div>
+                    <div class="col-md-2">{{ group.helper.나이 }}세</div>
+                    <div class="col-md-2">{{ group.helper.학교 }}</div>
+                </div>
+            </div>
+            
+            <!-- 조원들 -->
+            {% for member in group.members %}
+            <div class="member-row">
+                <div class="row align-items-center">
+                    <div class="col-md-2">
+                        <span class="role-badge role-member">
+                            <i class="fas fa-user"></i> 조원
+                        </span>
+                    </div>
+                    <div class="col-md-2">
+                        <strong>{{ member.이름 }}</strong>
+                        <i class="fas fa-{{ 'mars male' if member.성별 == '남' else 'venus female' }} gender-icon"></i>
+                    </div>
+                    <div class="col-md-2">{{ member.학과 }}</div>
+                    <div class="col-md-2">{{ member.학번 }}</div>
+                    <div class="col-md-2">{{ member.나이 }}세</div>
+                    <div class="col-md-2">{{ member.학교 }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <!-- 다운로드 섹션 -->
+        <div class="download-section">
+            <h4><i class="fas fa-download"></i> 결과 다운로드</h4>
+            <p>조 배정 결과를 CSV 파일로 다운로드할 수 있습니다.</p>
+            <a href="{{ url_for('download_file', session_id=result.session_id, file_type='results') }}" class="btn-download">
+                <i class="fas fa-file-csv"></i> 조 배정 결과 다운로드
+            </a>
+            <a href="{{ url_for('download_file', session_id=result.session_id, file_type='summary') }}" class="btn-download">
+                <i class="fas fa-chart-bar"></i> 요약 보고서 다운로드
+            </a>
+            <br><br>
+            <a href="{{ url_for('index') }}" class="btn-back">
+                <i class="fas fa-arrow-left"></i> 새로운 파일 업로드
+            </a>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 툴팁 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            // 모든 툴팁 요소 선택
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            
+            // 기존 툴팁 제거
+            tooltipTriggerList.forEach(function(element) {
+                var existingTooltip = bootstrap.Tooltip.getInstance(element);
+                if (existingTooltip) {
+                    existingTooltip.dispose();
+                }
+            });
+            
+            // 새로운 툴팁 생성
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl, {
+                    trigger: 'hover',
+                    html: true,
+                    placement: 'top',
+                    animation: true,
+                    delay: { show: 100, hide: 100 }
+                });
+            });
+            
+            // 디버깅용 로그
+            console.log('툴팁 초기화 완료:', tooltipList.length, '개');
+        });
+        
+        // 페이지 로드 후 툴팁 재초기화 (Flask 템플릿 렌더링 후)
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                tooltipTriggerList.forEach(function(element) {
+                    var existingTooltip = bootstrap.Tooltip.getInstance(element);
+                    if (existingTooltip) {
+                        existingTooltip.dispose();
+                    }
+                });
+                
+                var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl, {
+                        trigger: 'hover',
+                        html: true,
+                        placement: 'top',
+                        animation: true,
+                        delay: { show: 100, hide: 100 }
+                    });
+                });
+                console.log('툴팁 재초기화 완료:', tooltipList.length, '개');
+            }, 500);
+        });
+    </script>
+</body>
+</html> 
