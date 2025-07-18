@@ -79,7 +79,7 @@ def extract_region(학교: str) -> str:
     else:
         return "기타"
 
-def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regions: set) -> bool:
+def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regions: set, total_gender_ratio: float = 0.5, max_gender_diff: int = 1) -> bool:
     """조원을 해당 조에 배정할 수 있는지 확인"""
     
     # === 1단계: 필수 조건 체크 (절대 위반 불가) ===
@@ -117,7 +117,7 @@ def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regio
     
     # === 2단계: 최적화 조건 체크 (유연한 제한) ===
     
-    # 4. 성비 균형 체크 (3명 차이까지 허용)
+    # 4. 성비 균형 체크 (전체 인원 대비 1명 차이까지 허용)
     all_members = [group['leader'], group['helper']] + group['members']
     male_count = sum(1 for m in all_members if m['성별'] == '남')
     female_count = sum(1 for m in all_members if m['성별'] == '여')
@@ -130,8 +130,16 @@ def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regio
         new_male = male_count
         new_female = female_count + 1
     
-    # 성비 차이가 4명 이상이면 배정 제한 (3명까지 허용)
-    if abs(new_male - new_female) > 3:
+    # 전체 인원 대비 성비 차이 계산
+    total_members = new_male + new_female
+    expected_male = total_members * total_gender_ratio
+    expected_female = total_members * (1 - total_gender_ratio)
+    
+    # 성비 차이가 설정값을 초과하면 배정 제한
+    male_diff = abs(new_male - expected_male)
+    female_diff = abs(new_female - expected_female)
+    
+    if male_diff > max_gender_diff or female_diff > max_gender_diff:
         return False
     
     return True
@@ -173,12 +181,14 @@ def calculate_group_stats(group: Dict) -> Dict:
         'conditions_met': conditions
     }
 
-def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int = 6, max_members: int = 8) -> pd.DataFrame:
+def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int = 6, max_members: int = 8, 
+                 total_gender_ratio: float = 0.5, max_gender_diff: int = 1) -> pd.DataFrame:
     """조 배정 메인 함수"""
     
     # 디버깅: 컬럼명 확인
     print(f"조장/헬퍼 파일 컬럼: {list(leaders.columns)}")
     print(f"조원 파일 컬럼: {list(members.columns)}")
+    print(f"성비 설정: 전체 대비 {total_gender_ratio:.1%} 남성, 최대 {max_gender_diff}명 차이 허용")
     
     # 조장/헬퍼 데이터에서 조 번호 추출
     available_groups = sorted(leaders['조 숫자'].unique(), key=lambda x: int(x))
@@ -256,9 +266,9 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
             # 가능한 조들을 성비와 연령 분포를 고려하여 평가
             candidate_groups = []
             for group in groups.values():
-                if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions']):
+                if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions'], total_gender_ratio, max_gender_diff):
                     # 성비 점수 계산 (높은 우선순위)
-                    gender_score = calculate_gender_balance_score(group, member)
+                    gender_score = calculate_gender_balance_score(group, member, total_gender_ratio)
                     # 연령 분포 점수 계산 (중간 우선순위)
                     age_score = calculate_age_distribution_score(group, member)
                     # 학과 분포 점수 계산 (중간 우선순위)
@@ -304,7 +314,7 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 continue
             
             # 현재 조의 종합 점수 계산
-            current_gender_score = calculate_group_gender_score(group)
+            current_gender_score = calculate_group_gender_score(group, total_gender_ratio)
             current_age_score = calculate_group_age_score(group)
             current_major_score = calculate_group_major_score(group)
             current_region_score = calculate_group_region_score(group)
@@ -322,8 +332,8 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 for i, member1 in enumerate(group['members']):
                     for j, member2 in enumerate(other_group['members']):
                         # 교환 가능성 확인
-                        if (can_assign_to_group(other_group, member1, other_group['used_schools'], other_group['used_regions']) and
-                            can_assign_to_group(group, member2, group['used_schools'], group['used_regions'])):
+                        if (can_assign_to_group(other_group, member1, other_group['used_schools'], other_group['used_regions'], total_gender_ratio, max_gender_diff) and
+                            can_assign_to_group(group, member2, group['used_schools'], group['used_regions'], total_gender_ratio, max_gender_diff)):
                             
                             # 교환 후 점수 계산
                             temp_group1 = group.copy()
@@ -332,32 +342,32 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                             temp_group1['members'][i] = member2
                             temp_group2['members'][j] = member1
                             
-                            new_gender_score1 = calculate_group_gender_score(temp_group1)
+                            new_gender_score1 = calculate_group_gender_score(temp_group1, total_gender_ratio)
                             new_age_score1 = calculate_group_age_score(temp_group1)
                             new_major_score1 = calculate_group_major_score(temp_group1)
                             new_region_score1 = calculate_group_region_score(temp_group1)
                             new_total_score1 = (new_gender_score1 * 0.4 + 
-                                                 new_age_score1 * 0.25 + 
-                                                 new_major_score1 * 0.2 + 
-                                                 new_region_score1 * 0.15)
+                                              new_age_score1 * 0.25 + 
+                                              new_major_score1 * 0.2 + 
+                                              new_region_score1 * 0.15)
                             
-                            new_gender_score2 = calculate_group_gender_score(temp_group2)
+                            new_gender_score2 = calculate_group_gender_score(temp_group2, total_gender_ratio)
                             new_age_score2 = calculate_group_age_score(temp_group2)
                             new_major_score2 = calculate_group_major_score(temp_group2)
                             new_region_score2 = calculate_group_region_score(temp_group2)
                             new_total_score2 = (new_gender_score2 * 0.4 + 
-                                                 new_age_score2 * 0.25 + 
-                                                 new_major_score2 * 0.2 + 
-                                                 new_region_score2 * 0.15)
+                                              new_age_score2 * 0.25 + 
+                                              new_major_score2 * 0.2 + 
+                                              new_region_score2 * 0.15)
                             
-                            other_gender_score = calculate_group_gender_score(other_group)
+                            other_gender_score = calculate_group_gender_score(other_group, total_gender_ratio)
                             other_age_score = calculate_group_age_score(other_group)
                             other_major_score = calculate_group_major_score(other_group)
                             other_region_score = calculate_group_region_score(other_group)
                             other_total_score = (other_gender_score * 0.4 + 
-                                                 other_age_score * 0.25 + 
-                                                 other_major_score * 0.2 + 
-                                                 other_region_score * 0.15)
+                                               other_age_score * 0.25 + 
+                                               other_major_score * 0.2 + 
+                                               other_region_score * 0.15)
                             
                             # 전체 점수가 개선되면 교환
                             if new_total_score1 + new_total_score2 > current_total_score + other_total_score:
@@ -417,7 +427,7 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
     
     return pd.DataFrame(rows)
 
-def calculate_gender_balance_score(group: Dict, new_member: Dict) -> float:
+def calculate_gender_balance_score(group: Dict, new_member: Dict, total_gender_ratio: float) -> float:
     """조에 새로운 멤버를 추가했을 때의 성비 균형 점수 계산"""
     all_members = [group['leader'], group['helper']] + group['members']
     male_count = sum(1 for m in all_members if m['성별'] == '남')
@@ -433,20 +443,27 @@ def calculate_gender_balance_score(group: Dict, new_member: Dict) -> float:
     
     total_members = new_male + new_female
     
-    # 성비 차이 계산 (차이가 작을수록 높은 점수)
-    gender_diff = abs(new_male - new_female)
+    # 전체 인원 대비 성비 차이 계산
+    expected_male = total_members * total_gender_ratio
+    expected_female = total_members * (1 - total_gender_ratio)
+    
+    male_diff = abs(new_male - expected_male)
+    female_diff = abs(new_female - expected_female)
+    
+    # 성비 차이가 작을수록 높은 점수
+    max_diff = max(male_diff, female_diff)
     
     # 성비 균형 점수 (차이가 0이면 1.0, 차이가 클수록 낮은 점수)
-    if gender_diff == 0:
+    if max_diff == 0:
         balance_score = 1.0
-    elif gender_diff == 1:
+    elif max_diff <= 0.5:
         balance_score = 0.9
-    elif gender_diff == 2:
+    elif max_diff <= 1.0:
         balance_score = 0.7
-    elif gender_diff == 3:
+    elif max_diff <= 1.5:
         balance_score = 0.5
     else:
-        balance_score = 0.1  # 3명 이상 차이나면 매우 낮은 점수
+        balance_score = 0.1  # 1.5명 이상 차이나면 매우 낮은 점수
     
     return balance_score
 
@@ -516,26 +533,35 @@ def calculate_region_diversity_score(group: Dict, new_member: Dict) -> float:
     # 점수 정규화 (0~5 사이)
     return min(region_score / 5, 1.0)
 
-def calculate_group_gender_score(group: Dict) -> float:
+def calculate_group_gender_score(group: Dict, total_gender_ratio: float) -> float:
     """조의 현재 성비 균형 점수 계산"""
     all_members = [group['leader'], group['helper']] + group['members']
     male_count = sum(1 for m in all_members if m['성별'] == '남')
     female_count = sum(1 for m in all_members if m['성별'] == '여')
     
-    # 성비 차이 계산
-    gender_diff = abs(male_count - female_count)
+    total_members = male_count + female_count
+    
+    # 전체 인원 대비 성비 차이 계산
+    expected_male = total_members * total_gender_ratio
+    expected_female = total_members * (1 - total_gender_ratio)
+    
+    male_diff = abs(male_count - expected_male)
+    female_diff = abs(female_count - expected_female)
+    
+    # 성비 차이가 작을수록 높은 점수
+    max_diff = max(male_diff, female_diff)
     
     # 성비 균형 점수 (차이가 0이면 1.0, 차이가 클수록 낮은 점수)
-    if gender_diff == 0:
+    if max_diff == 0:
         balance_score = 1.0
-    elif gender_diff == 1:
+    elif max_diff <= 0.5:
         balance_score = 0.9
-    elif gender_diff == 2:
+    elif max_diff <= 1.0:
         balance_score = 0.7
-    elif gender_diff == 3:
+    elif max_diff <= 1.5:
         balance_score = 0.5
     else:
-        balance_score = 0.1  # 3명 이상 차이나면 매우 낮은 점수
+        balance_score = 0.1  # 1.5명 이상 차이나면 매우 낮은 점수
     
     return balance_score
 
@@ -670,13 +696,15 @@ def main():
     parser.add_argument('--out', default='final_group_assignment.csv', help="출력 CSV 파일")
     parser.add_argument('--min-members', type=int, default=6, help="각 조 최소 조원 수 (기본값: 6)")
     parser.add_argument('--max-members', type=int, default=8, help="각 조 최대 조원 수 (기본값: 8)")
+    parser.add_argument('--gender-ratio', type=float, default=0.5, help="전체 인원 대비 남성 비율 (기본값: 0.5)")
+    parser.add_argument('--max-gender-diff', type=int, default=1, help="성비 차이 허용 범위 (기본값: 1)")
     args = parser.parse_args()
     
     print("데이터 로딩 중...")
     leaders, members = load_data(args.leaders, args.members)
     
     print("조 배정 중...")
-    df_assigned = assign_groups(leaders, members, args.min_members, args.max_members)
+    df_assigned = assign_groups(leaders, members, args.min_members, args.max_members, args.gender_ratio, args.max_gender_diff)
     
     print("결과 저장 중...")
     df_assigned.to_csv(args.out, index=False, encoding='utf-8-sig')
