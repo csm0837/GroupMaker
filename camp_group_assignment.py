@@ -349,12 +349,112 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 min_group['age_distribution'].append(member.get('나이', 0))
     
     # 2단계: 최소 인원 조건 확인 및 조정
+    under_min_groups = []
+    over_max_groups = []
+    
     for group in groups.values():
         if len(group['members']) < min_members:
+            under_min_groups.append(group)
             print(f"경고: 조 {group['조 번호']}의 조원이 {len(group['members'])}명으로 최소 인원({min_members}명)에 미달합니다.")
+        elif len(group['members']) > max_members:
+            over_max_groups.append(group)
+            print(f"경고: 조 {group['조 번호']}의 조원이 {len(group['members'])}명으로 최대 인원({max_members}명)을 초과합니다.")
     
-    # 3단계: 성비 및 연령 분포 최적화
+    # 최소 인원 미달 조들을 위한 재배정
+    if under_min_groups:
+        print(f"최소 인원 미달 조 {len(under_min_groups)}개에 대한 재배정을 시작합니다.")
+        
+        # 최대 인원 초과 조에서 멤버를 최소 인원 미달 조로 이동
+        for under_group in under_min_groups:
+            needed_members = min_members - len(under_group['members'])
+            
+            for over_group in over_max_groups:
+                if needed_members <= 0:
+                    break
+                    
+                # 초과 조에서 이동 가능한 멤버 찾기
+                movable_members = []
+                for member in over_group['members']:
+                    if can_assign_to_group(under_group, member, under_group['used_schools'], under_group['used_regions'], actual_gender_ratio, max_gender_diff):
+                        movable_members.append(member)
+                
+                # 이동할 멤버 선택 (가장 적은 수로)
+                move_count = min(needed_members, len(movable_members), len(over_group['members']) - min_members)
+                
+                for i in range(move_count):
+                    if i < len(movable_members):
+                        member_to_move = movable_members[i]
+                        
+                        # 멤버 이동
+                        over_group['members'].remove(member_to_move)
+                        under_group['members'].append(member_to_move)
+                        
+                        # 사용된 학교/지역 업데이트
+                        under_group['used_schools'].add(canonical_school(member_to_move.get('캠퍼스', '')))
+                        under_group['used_regions'].add(extract_region(member_to_move.get('캠퍼스', '')))
+                        under_group['age_distribution'].append(member_to_move.get('나이', 0))
+                        
+                        # 초과 조에서 제거
+                        over_group['used_schools'].discard(canonical_school(member_to_move.get('캠퍼스', '')))
+                        over_group['used_regions'].discard(extract_region(member_to_move.get('캠퍼스', '')))
+                        if member_to_move.get('나이', 0) in over_group['age_distribution']:
+                            over_group['age_distribution'].remove(member_to_move.get('나이', 0))
+                        
+                        needed_members -= 1
+                        print(f"조 {over_group['조 번호']}에서 조 {under_group['조 번호']}로 {member_to_move.get('이름', '')} 이동")
+                
+                # 초과 조가 더 이상 초과하지 않으면 목록에서 제거
+                if len(over_group['members']) <= max_members:
+                    over_max_groups.remove(over_group)
+    
+    # 최종 상태 확인
+    final_under_min = [g for g in groups.values() if len(g['members']) < min_members]
+    final_over_max = [g for g in groups.values() if len(g['members']) > max_members]
+    
+    if final_under_min:
+        print(f"⚠️ 재배정 후에도 최소 인원 미달 조 {len(final_under_min)}개가 남아있습니다.")
+        for group in final_under_min:
+            print(f"  - 조 {group['조 번호']}: {len(group['members'])}명 (최소 {min_members}명 필요)")
+    
+    if final_over_max:
+        print(f"⚠️ 재배정 후에도 최대 인원 초과 조 {len(final_over_max)}개가 남아있습니다.")
+        for group in final_over_max:
+            print(f"  - 조 {group['조 번호']}: {len(group['members'])}명 (최대 {max_members}명 초과)")
+    
+    # 3단계: 성비 및 연령 분포 최적화 (인원 균형 우선)
     for _ in range(3):  # 3번 반복하여 최적화
+        # 먼저 인원 균형 최적화
+        for group in groups.values():
+            if len(group['members']) < min_members:
+                # 최소 인원 미달 조는 다른 조에서 멤버를 가져오기 시도
+                for other_group in groups.values():
+                    if other_group == group or len(other_group['members']) <= min_members:
+                        continue
+                    
+                    # 다른 조에서 이동 가능한 멤버 찾기
+                    for member in other_group['members']:
+                        if can_assign_to_group(group, member, group['used_schools'], group['used_regions'], actual_gender_ratio, max_gender_diff):
+                            # 멤버 이동
+                            other_group['members'].remove(member)
+                            group['members'].append(member)
+                            
+                            # 사용된 학교/지역 업데이트
+                            group['used_schools'].add(canonical_school(member.get('캠퍼스', '')))
+                            group['used_regions'].add(extract_region(member.get('캠퍼스', '')))
+                            group['age_distribution'].append(member.get('나이', 0))
+                            
+                            other_group['used_schools'].discard(canonical_school(member.get('캠퍼스', '')))
+                            other_group['used_regions'].discard(extract_region(member.get('캠퍼스', '')))
+                            if member.get('나이', 0) in other_group['age_distribution']:
+                                other_group['age_distribution'].remove(member.get('나이', 0))
+                            
+                            print(f"인원 균형: 조 {other_group['조 번호']}에서 조 {group['조 번호']}로 {member.get('이름', '')} 이동")
+                            break
+                    
+                    if len(group['members']) >= min_members:
+                        break
+        
+        # 그 다음 성비 및 연령 분포 최적화
         for group in groups.values():
             if len(group['members']) < min_members:
                 continue
@@ -369,7 +469,7 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                                  current_major_score * 0.2 + 
                                  current_region_score * 0.15)
             
-            # 다른 조와 교환 시도
+            # 다른 조와 교환 시도 (인원 균형 유지하면서)
             for other_group in groups.values():
                 if other_group == group or len(other_group['members']) < min_members:
                     continue
@@ -377,7 +477,7 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 # 조원 교환 시도
                 for i, member1 in enumerate(group['members']):
                     for j, member2 in enumerate(other_group['members']):
-                        # 교환 가능성 확인
+                        # 교환 가능성 확인 (인원 균형 유지)
                         if (can_assign_to_group(other_group, member1, other_group['used_schools'], other_group['used_regions'], actual_gender_ratio, max_gender_diff) and
                             can_assign_to_group(group, member2, group['used_schools'], group['used_regions'], actual_gender_ratio, max_gender_diff)):
                             
