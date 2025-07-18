@@ -327,17 +327,63 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
                 # 조장
                 leader = group['leader']
                 phone = leader.get('전화번호', '')
-                st.markdown(f"**👑 조장**: {leader['이름']} ({leader['성별']}, {leader['학과']}, {leader['나이']}세) {f'📞 {phone}' if phone else ''}")
+                
+                # 조장 정보 구성
+                leader_school = leader.get('학교', '')
+                leader_major = leader.get('학과', '')
+                
+                leader_info = f"**👑 조장**: {leader['이름']} ({leader['성별']}, {leader['나이']}세)"
+                if leader_school:
+                    leader_info += f" | 📍 {leader_school}"
+                if leader_major:
+                    leader_info += f" | 🎓 {leader_major}"
+                if phone:
+                    leader_info += f" | 📞 {phone}"
+                
+                st.markdown(leader_info)
                 
                 # 헬퍼
                 helper = group['helper']
                 phone = helper.get('전화번호', '')
-                st.markdown(f"**⭐ 헬퍼**: {helper['이름']} ({helper['성별']}, {helper['학과']}, {helper['나이']}세) {f'📞 {phone}' if phone else ''}")
+                
+                # 헬퍼 정보 구성
+                helper_school = helper.get('학교', '')
+                helper_major = helper.get('학과', '')
+                
+                helper_info = f"**⭐ 헬퍼**: {helper['이름']} ({helper['성별']}, {helper['나이']}세)"
+                if helper_school:
+                    helper_info += f" | 📍 {helper_school}"
+                if helper_major:
+                    helper_info += f" | 🎓 {helper_major}"
+                if phone:
+                    helper_info += f" | 📞 {phone}"
+                
+                st.markdown(helper_info)
                 
                 # 조원들
                 for i, member in enumerate(group['members'], 1):
                     phone = member.get('전화번호', '')
-                    st.markdown(f"**{i}.** {member['이름']} ({member['성별']}, {member['학과']}, {member['나이']}세) {f'📞 {phone}' if phone else ''}")
+                    
+                    # 지역, 캠퍼스, 학과, 학년 정보 구성
+                    region = member.get('지역', '')
+                    campus = member.get('캠퍼스', '')
+                    major = member.get('학과', '')
+                    grade = member.get('학년', '')
+                    
+                    # 정보 조합 (예: 강원 연세원주 예2)
+                    location_info = f"{region} {campus}".strip()
+                    academic_info = f"{major}{grade}".strip()
+                    
+                    # 전체 정보 표시
+                    member_info = f"**{i}.** {member['이름']} ({member['성별']}, {member['나이']}세)"
+                    if location_info:
+                        member_info += f" | 📍 {location_info}"
+                    if academic_info:
+                        member_info += f" | 🎓 {academic_info}"
+                    if phone:
+                        member_info += f" | 📞 {phone}"
+                    
+                    st.markdown(member_info)
             
             with col2:
                 st.subheader("조 통계")
