@@ -101,7 +101,28 @@ def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regio
     if member_school in used_schools:
         return False
     
-    # 나이 체크
+    # 성비 균형 체크 (우선순위 높임)
+    all_members = [group['leader'], group['helper']] + group['members']
+    male_count = sum(1 for m in all_members if m['성별'] == '남')
+    female_count = sum(1 for m in all_members if m['성별'] == '여')
+    
+    # 현재 성비 계산
+    current_male = male_count
+    current_female = female_count
+    
+    # 새 멤버 추가 시 성비 계산
+    if member['성별'] == '남':
+        new_male = current_male + 1
+        new_female = current_female
+    else:
+        new_male = current_male
+        new_female = current_female + 1
+    
+    # 성비 차이가 3명 이상이면 배정 제한 (기존 2명에서 3명으로 완화)
+    if abs(new_male - new_female) > 3:
+        return False
+    
+    # 나이 체크 (우선순위 낮춤)
     helper_age = group['helper'].get('나이', 0)
     member_age = member.get('나이', 0)
     
@@ -231,16 +252,20 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
         for member in age_members:
             assigned = False
             
-            # 가능한 조들을 연령 분포를 고려하여 평가
+            # 가능한 조들을 성비와 연령 분포를 고려하여 평가
             candidate_groups = []
             for group in groups.values():
                 if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions']):
-                    # 연령 분포 점수 계산
+                    # 성비 점수 계산 (높은 우선순위)
+                    gender_score = calculate_gender_balance_score(group, member)
+                    # 연령 분포 점수 계산 (낮은 우선순위)
                     age_score = calculate_age_distribution_score(group, member)
-                    candidate_groups.append((group, age_score))
+                    # 종합 점수 (성비 70%, 연령 30%)
+                    total_score = gender_score * 0.7 + age_score * 0.3
+                    candidate_groups.append((group, total_score))
             
             if candidate_groups:
-                # 연령 분포 점수가 가장 좋은 조 선택
+                # 종합 점수가 가장 좋은 조 선택
                 candidate_groups.sort(key=lambda x: x[1], reverse=True)
                 best_group = candidate_groups[0][0]
                 
@@ -263,16 +288,18 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
         if len(group['members']) < min_members:
             print(f"경고: 조 {group['조 번호']}의 조원이 {len(group['members'])}명으로 최소 인원({min_members}명)에 미달합니다.")
     
-    # 3단계: 연령 분포 최적화
-    for _ in range(2):  # 2번 반복하여 연령 분포 최적화
+    # 3단계: 성비 및 연령 분포 최적화
+    for _ in range(3):  # 3번 반복하여 최적화
         for group in groups.values():
             if len(group['members']) < min_members:
                 continue
             
-            # 현재 조의 연령 분포 점수 계산
-            current_score = calculate_group_age_score(group)
+            # 현재 조의 종합 점수 계산
+            current_gender_score = calculate_group_gender_score(group)
+            current_age_score = calculate_group_age_score(group)
+            current_total_score = current_gender_score * 0.7 + current_age_score * 0.3
             
-            # 다른 조와 연령 분포 교환 시도
+            # 다른 조와 교환 시도
             for other_group in groups.values():
                 if other_group == group or len(other_group['members']) < min_members:
                     continue
@@ -291,11 +318,20 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                             temp_group1['members'][i] = member2
                             temp_group2['members'][j] = member1
                             
-                            new_score1 = calculate_group_age_score(temp_group1)
-                            new_score2 = calculate_group_age_score(temp_group2)
+                            new_gender_score1 = calculate_group_gender_score(temp_group1)
+                            new_age_score1 = calculate_group_age_score(temp_group1)
+                            new_total_score1 = new_gender_score1 * 0.7 + new_age_score1 * 0.3
+                            
+                            new_gender_score2 = calculate_group_gender_score(temp_group2)
+                            new_age_score2 = calculate_group_age_score(temp_group2)
+                            new_total_score2 = new_gender_score2 * 0.7 + new_age_score2 * 0.3
+                            
+                            other_gender_score = calculate_group_gender_score(other_group)
+                            other_age_score = calculate_group_age_score(other_group)
+                            other_total_score = other_gender_score * 0.7 + other_age_score * 0.3
                             
                             # 전체 점수가 개선되면 교환
-                            if new_score1 + new_score2 > current_score + calculate_group_age_score(other_group):
+                            if new_total_score1 + new_total_score2 > current_total_score + other_total_score:
                                 group['members'][i] = member2
                                 other_group['members'][j] = member1
                                 
@@ -352,6 +388,39 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
     
     return pd.DataFrame(rows)
 
+def calculate_gender_balance_score(group: Dict, new_member: Dict) -> float:
+    """조에 새로운 멤버를 추가했을 때의 성비 균형 점수 계산"""
+    all_members = [group['leader'], group['helper']] + group['members']
+    male_count = sum(1 for m in all_members if m['성별'] == '남')
+    female_count = sum(1 for m in all_members if m['성별'] == '여')
+    
+    # 새 멤버 추가 시 성비 계산
+    if new_member['성별'] == '남':
+        new_male = male_count + 1
+        new_female = female_count
+    else:
+        new_male = male_count
+        new_female = female_count + 1
+    
+    total_members = new_male + new_female
+    
+    # 성비 차이 계산 (차이가 작을수록 높은 점수)
+    gender_diff = abs(new_male - new_female)
+    
+    # 성비 균형 점수 (차이가 0이면 1.0, 차이가 클수록 낮은 점수)
+    if gender_diff == 0:
+        balance_score = 1.0
+    elif gender_diff == 1:
+        balance_score = 0.9
+    elif gender_diff == 2:
+        balance_score = 0.7
+    elif gender_diff == 3:
+        balance_score = 0.5
+    else:
+        balance_score = 0.1  # 3명 이상 차이나면 매우 낮은 점수
+    
+    return balance_score
+
 def calculate_age_distribution_score(group: Dict, new_member: Dict) -> float:
     """조에 새로운 멤버를 추가했을 때의 연령 분포 점수 계산"""
     current_ages = group['age_distribution'].copy()
@@ -378,6 +447,29 @@ def calculate_age_distribution_score(group: Dict, new_member: Dict) -> float:
     score = (variance * 0.7 + diversity_score * 0.3) / 100  # 정규화
     
     return score
+
+def calculate_group_gender_score(group: Dict) -> float:
+    """조의 현재 성비 균형 점수 계산"""
+    all_members = [group['leader'], group['helper']] + group['members']
+    male_count = sum(1 for m in all_members if m['성별'] == '남')
+    female_count = sum(1 for m in all_members if m['성별'] == '여')
+    
+    # 성비 차이 계산
+    gender_diff = abs(male_count - female_count)
+    
+    # 성비 균형 점수 (차이가 0이면 1.0, 차이가 클수록 낮은 점수)
+    if gender_diff == 0:
+        balance_score = 1.0
+    elif gender_diff == 1:
+        balance_score = 0.9
+    elif gender_diff == 2:
+        balance_score = 0.7
+    elif gender_diff == 3:
+        balance_score = 0.5
+    else:
+        balance_score = 0.1  # 3명 이상 차이나면 매우 낮은 점수
+    
+    return balance_score
 
 def calculate_group_age_score(group: Dict) -> float:
     """조의 현재 연령 분포 점수 계산"""
