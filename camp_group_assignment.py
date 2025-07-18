@@ -154,6 +154,10 @@ def calculate_group_stats(group: Dict) -> Dict:
 def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int = 6, max_members: int = 8) -> pd.DataFrame:
     """조 배정 메인 함수"""
     
+    # 디버깅: 컬럼명 확인
+    print(f"조장/헬퍼 파일 컬럼: {list(leaders.columns)}")
+    print(f"조원 파일 컬럼: {list(members.columns)}")
+    
     # 조장/헬퍼 데이터에서 조 번호 추출
     available_groups = sorted(leaders['조 숫자'].unique(), key=lambda x: int(x))
     print(f"사용 가능한 조 번호: {available_groups}")
@@ -164,14 +168,28 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
         leader_df = leaders[leaders['조 숫자'] == grp_num]
         helper_df = leaders[leaders['조 숫자'] == grp_num]
         
-        # 조장 찾기
-        leader_row = leader_df[leader_df['역할'] == '조장']
+        # 조장 찾기 (컬럼명 확인 후 수정)
+        if '조장or헬퍼' in leaders.columns:
+            leader_row = leader_df[leader_df['조장or헬퍼'] == '조장']
+        elif '역할' in leaders.columns:
+            leader_row = leader_df[leader_df['역할'] == '조장']
+        else:
+            print(f"경고: 조장/헬퍼 구분 컬럼을 찾을 수 없습니다. 사용 가능한 컬럼: {list(leaders.columns)}")
+            continue
+            
         if leader_row.empty:
             print(f"경고: 조 {grp_num}에 조장이 없습니다.")
             continue
         
-        # 헬퍼 찾기
-        helper_row = helper_df[helper_df['역할'] == '헬퍼']
+        # 헬퍼 찾기 (컬럼명 확인 후 수정)
+        if '조장or헬퍼' in leaders.columns:
+            helper_row = helper_df[helper_df['조장or헬퍼'] == '헬퍼']
+        elif '역할' in leaders.columns:
+            helper_row = helper_df[helper_df['역할'] == '헬퍼']
+        else:
+            print(f"경고: 조장/헬퍼 구분 컬럼을 찾을 수 없습니다.")
+            continue
+            
         if helper_row.empty:
             print(f"경고: 조 {grp_num}에 헬퍼가 없습니다.")
             continue
