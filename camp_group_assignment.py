@@ -81,7 +81,10 @@ def extract_region(학교: str) -> str:
 
 def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regions: set) -> bool:
     """조원을 해당 조에 배정할 수 있는지 확인"""
-    # 의대 24/25학번 분리 체크
+    
+    # === 1단계: 필수 조건 체크 (절대 위반 불가) ===
+    
+    # 1. 의대 24/25학번 분리 체크
     leader_major = extract_major(group['leader'].get('학과', ''))
     member_major = extract_major(member.get('학과', ''))
     
@@ -96,33 +99,12 @@ def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regio
             if leader_year in ["24", "25"] and member_year in ["24", "25"] and leader_year != member_year:
                 return False
     
-    # 같은 학교 체크
+    # 2. 같은 학교 체크
     member_school = canonical_school(member.get('캠퍼스', ''))
     if member_school in used_schools:
         return False
     
-    # 성비 균형 체크 (우선순위 높임)
-    all_members = [group['leader'], group['helper']] + group['members']
-    male_count = sum(1 for m in all_members if m['성별'] == '남')
-    female_count = sum(1 for m in all_members if m['성별'] == '여')
-    
-    # 현재 성비 계산
-    current_male = male_count
-    current_female = female_count
-    
-    # 새 멤버 추가 시 성비 계산
-    if member['성별'] == '남':
-        new_male = current_male + 1
-        new_female = current_female
-    else:
-        new_male = current_male
-        new_female = current_female + 1
-    
-    # 성비 차이가 3명 이상이면 배정 제한 (기존 2명에서 3명으로 완화)
-    if abs(new_male - new_female) > 3:
-        return False
-    
-    # 나이 체크 (우선순위 낮춤)
+    # 3. 나이 조건 체크 (헬퍼보다 어려야 함)
     helper_age = group['helper'].get('나이', 0)
     member_age = member.get('나이', 0)
     
@@ -132,6 +114,25 @@ def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regio
     else:
         if member_age >= helper_age:
             return False
+    
+    # === 2단계: 최적화 조건 체크 (유연한 제한) ===
+    
+    # 4. 성비 균형 체크 (3명 차이까지 허용)
+    all_members = [group['leader'], group['helper']] + group['members']
+    male_count = sum(1 for m in all_members if m['성별'] == '남')
+    female_count = sum(1 for m in all_members if m['성별'] == '여')
+    
+    # 새 멤버 추가 시 성비 계산
+    if member['성별'] == '남':
+        new_male = male_count + 1
+        new_female = female_count
+    else:
+        new_male = male_count
+        new_female = female_count + 1
+    
+    # 성비 차이가 4명 이상이면 배정 제한 (3명까지 허용)
+    if abs(new_male - new_female) > 3:
+        return False
     
     return True
 
@@ -258,10 +259,18 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 if len(group['members']) < max_members and can_assign_to_group(group, member, group['used_schools'], group['used_regions']):
                     # 성비 점수 계산 (높은 우선순위)
                     gender_score = calculate_gender_balance_score(group, member)
-                    # 연령 분포 점수 계산 (낮은 우선순위)
+                    # 연령 분포 점수 계산 (중간 우선순위)
                     age_score = calculate_age_distribution_score(group, member)
-                    # 종합 점수 (성비 70%, 연령 30%)
-                    total_score = gender_score * 0.7 + age_score * 0.3
+                    # 학과 분포 점수 계산 (중간 우선순위)
+                    major_score = calculate_major_distribution_score(group, member)
+                    # 지역 다양성 점수 계산 (낮은 우선순위)
+                    region_score = calculate_region_diversity_score(group, member)
+                    
+                    # 종합 점수 (성비 40%, 연령 25%, 학과 20%, 지역 15%)
+                    total_score = (gender_score * 0.4 + 
+                                 age_score * 0.25 + 
+                                 major_score * 0.2 + 
+                                 region_score * 0.15)
                     candidate_groups.append((group, total_score))
             
             if candidate_groups:
@@ -297,7 +306,12 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
             # 현재 조의 종합 점수 계산
             current_gender_score = calculate_group_gender_score(group)
             current_age_score = calculate_group_age_score(group)
-            current_total_score = current_gender_score * 0.7 + current_age_score * 0.3
+            current_major_score = calculate_group_major_score(group)
+            current_region_score = calculate_group_region_score(group)
+            current_total_score = (current_gender_score * 0.4 + 
+                                 current_age_score * 0.25 + 
+                                 current_major_score * 0.2 + 
+                                 current_region_score * 0.15)
             
             # 다른 조와 교환 시도
             for other_group in groups.values():
@@ -320,15 +334,30 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                             
                             new_gender_score1 = calculate_group_gender_score(temp_group1)
                             new_age_score1 = calculate_group_age_score(temp_group1)
-                            new_total_score1 = new_gender_score1 * 0.7 + new_age_score1 * 0.3
+                            new_major_score1 = calculate_group_major_score(temp_group1)
+                            new_region_score1 = calculate_group_region_score(temp_group1)
+                            new_total_score1 = (new_gender_score1 * 0.4 + 
+                                                 new_age_score1 * 0.25 + 
+                                                 new_major_score1 * 0.2 + 
+                                                 new_region_score1 * 0.15)
                             
                             new_gender_score2 = calculate_group_gender_score(temp_group2)
                             new_age_score2 = calculate_group_age_score(temp_group2)
-                            new_total_score2 = new_gender_score2 * 0.7 + new_age_score2 * 0.3
+                            new_major_score2 = calculate_group_major_score(temp_group2)
+                            new_region_score2 = calculate_group_region_score(temp_group2)
+                            new_total_score2 = (new_gender_score2 * 0.4 + 
+                                                 new_age_score2 * 0.25 + 
+                                                 new_major_score2 * 0.2 + 
+                                                 new_region_score2 * 0.15)
                             
                             other_gender_score = calculate_group_gender_score(other_group)
                             other_age_score = calculate_group_age_score(other_group)
-                            other_total_score = other_gender_score * 0.7 + other_age_score * 0.3
+                            other_major_score = calculate_group_major_score(other_group)
+                            other_region_score = calculate_group_region_score(other_group)
+                            other_total_score = (other_gender_score * 0.4 + 
+                                                 other_age_score * 0.25 + 
+                                                 other_major_score * 0.2 + 
+                                                 other_region_score * 0.15)
                             
                             # 전체 점수가 개선되면 교환
                             if new_total_score1 + new_total_score2 > current_total_score + other_total_score:
@@ -448,6 +477,45 @@ def calculate_age_distribution_score(group: Dict, new_member: Dict) -> float:
     
     return score
 
+def calculate_major_distribution_score(group: Dict, new_member: Dict) -> float:
+    """조에 새로운 멤버를 추가했을 때의 학과 분포 점수 계산"""
+    all_members = [group['leader'], group['helper']] + group['members']
+    major_counts = Counter([extract_major(m.get('학과', '')) for m in all_members])
+    
+    # 새 멤버 추가 시 학과 분포 계산
+    new_major = extract_major(new_member.get('학과', ''))
+    new_major_count = major_counts.get(new_major, 0) + 1
+    
+    # 학과 분포 점수 (의대,치대,한의대,간호대 중 2명 이상인 학과가 많을수록 높은 점수)
+    major_score = sum(1 for major, count in major_counts.items() if major in ['의대', '치대', '한의대', '간호대'] and count >= 2)
+    
+    # 새 멤버가 의대,치대,한의대,간호대 중 하나라면 점수 증가
+    if new_major in ['의대', '치대', '한의대', '간호대']:
+        major_score += 1
+    
+    # 점수 정규화 (0~5 사이)
+    return min(major_score / 5, 1.0)
+
+def calculate_region_diversity_score(group: Dict, new_member: Dict) -> float:
+    """조에 새로운 멤버를 추가했을 때의 지역 다양성 점수 계산"""
+    all_members = [group['leader'], group['helper']] + group['members']
+    regions = [extract_region(m.get('캠퍼스', m.get('학교/학년', ''))) for m in all_members]
+    region_counts = Counter(regions)
+    
+    # 새 멤버 추가 시 지역 분포 계산
+    new_region = extract_region(new_member.get('캠퍼스', ''))
+    new_region_count = region_counts.get(new_region, 0) + 1
+    
+    # 지역 다양성 점수 (3개 이상 지역에서 온 사람이 많을수록 높은 점수)
+    region_score = sum(1 for region, count in region_counts.items() if count >= 2)
+    
+    # 새 멤버가 다른 지역에서 온 경우 점수 증가
+    if new_region != '기타': # 기타 지역은 다양성에 포함되지 않음
+        region_score += 1
+    
+    # 점수 정규화 (0~5 사이)
+    return min(region_score / 5, 1.0)
+
 def calculate_group_gender_score(group: Dict) -> float:
     """조의 현재 성비 균형 점수 계산"""
     all_members = [group['leader'], group['helper']] + group['members']
@@ -489,6 +557,29 @@ def calculate_group_age_score(group: Dict) -> float:
     
     score = (variance * 0.7 + diversity_score * 0.3) / 100
     return score
+
+def calculate_group_major_score(group: Dict) -> float:
+    """조의 현재 학과 분포 점수 계산"""
+    all_members = [group['leader'], group['helper']] + group['members']
+    major_counts = Counter([extract_major(m.get('학과', '')) for m in all_members])
+    
+    # 학과 분포 점수 (의대,치대,한의대,간호대 중 2명 이상인 학과가 많을수록 높은 점수)
+    major_score = sum(1 for major, count in major_counts.items() if major in ['의대', '치대', '한의대', '간호대'] and count >= 2)
+    
+    # 점수 정규화 (0~5 사이)
+    return min(major_score / 5, 1.0)
+
+def calculate_group_region_score(group: Dict) -> float:
+    """조의 현재 지역 다양성 점수 계산"""
+    all_members = [group['leader'], group['helper']] + group['members']
+    regions = [extract_region(m.get('캠퍼스', m.get('학교/학년', ''))) for m in all_members]
+    region_counts = Counter(regions)
+    
+    # 지역 다양성 점수 (3개 이상 지역에서 온 사람이 많을수록 높은 점수)
+    region_score = sum(1 for region, count in region_counts.items() if count >= 2)
+    
+    # 점수 정규화 (0~5 사이)
+    return min(region_score / 5, 1.0)
 
 def generate_summary_report(groups: Dict, output_file: str):
     """조별 요약 보고서 생성"""
