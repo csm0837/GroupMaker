@@ -70,6 +70,47 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def create_excel_download(df_assigned, summary_df):
+    """엑셀 파일 생성 및 다운로드 링크 생성"""
+    
+    # 엑셀 파일 생성
+    with BytesIO() as buffer:
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            # 조 배정 결과 시트
+            df_assigned.to_excel(writer, sheet_name='조배정결과', index=False)
+            
+            # 요약 보고서 시트
+            summary_df.to_excel(writer, sheet_name='조별요약', index=False)
+            
+            # 조별 상세 정보 시트 생성
+            detailed_data = []
+            for _, row in df_assigned.iterrows():
+                detailed_row = {
+                    '조 번호': row['조 번호'],
+                    '역할': row['역할'],
+                    '이름': row['이름'],
+                    '성별': row['성별'],
+                    '나이': row['나이'],
+                    '학과': row['학과'],
+                    '학교': row['학교'],
+                    '지역': row['지역'],
+                    '전화번호': row.get('전화번호', ''),  # 전화번호 추가
+                    '학번': row.get('학번', ''),
+                    '트랙': row.get('트랙', 'EBS')
+                }
+                detailed_data.append(detailed_row)
+            
+            detailed_df = pd.DataFrame(detailed_data)
+            detailed_df.to_excel(writer, sheet_name='상세정보', index=False)
+        
+        buffer.seek(0)
+        excel_data = buffer.read()
+    
+    # 다운로드 링크 생성
+    b64 = base64.b64encode(excel_data).decode()
+    href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="수련회_조배정결과.xlsx" class="download-button">📊 엑셀 파일 다운로드 (전체 결과)</a>'
+    return href
+
 def main():
     """메인 애플리케이션"""
     
@@ -265,15 +306,18 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members):
                 
                 # 조장
                 leader = group['leader']
-                st.markdown(f"**👑 조장**: {leader['이름']} ({leader['성별']}, {leader['학과']}, {leader['나이']}세)")
+                phone = leader.get('전화번호', '')
+                st.markdown(f"**👑 조장**: {leader['이름']} ({leader['성별']}, {leader['학과']}, {leader['나이']}세) {f'📞 {phone}' if phone else ''}")
                 
                 # 헬퍼
                 helper = group['helper']
-                st.markdown(f"**⭐ 헬퍼**: {helper['이름']} ({helper['성별']}, {helper['학과']}, {helper['나이']}세)")
+                phone = helper.get('전화번호', '')
+                st.markdown(f"**⭐ 헬퍼**: {helper['이름']} ({helper['성별']}, {helper['학과']}, {helper['나이']}세) {f'📞 {phone}' if phone else ''}")
                 
                 # 조원들
                 for i, member in enumerate(group['members'], 1):
-                    st.markdown(f"**{i}.** {member['이름']} ({member['성별']}, {member['학과']}, {member['나이']}세)")
+                    phone = member.get('전화번호', '')
+                    st.markdown(f"**{i}.** {member['이름']} ({member['성별']}, {member['학과']}, {member['나이']}세) {f'📞 {phone}' if phone else ''}")
             
             with col2:
                 st.subheader("조 통계")
@@ -292,20 +336,25 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members):
     # 다운로드 섹션
     st.header("📥 결과 다운로드")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        # 조 배정 결과 다운로드
-        csv = df_assigned.to_csv(index=False, encoding='utf-8-sig')
-        b64 = base64.b64encode(csv.encode()).decode()
-        href = f'<a href="data:file/csv;base64,{b64}" download="조배정결과.csv" class="download-button">📊 조 배정 결과 다운로드</a>'
-        st.markdown(href, unsafe_allow_html=True)
+        # 엑셀 파일 다운로드 (전체 결과)
+        excel_href = create_excel_download(df_assigned, summary_df)
+        st.markdown(excel_href, unsafe_allow_html=True)
     
     with col2:
-        # 요약 보고서 다운로드
+        # 조 배정 결과 다운로드 (CSV)
+        csv = df_assigned.to_csv(index=False, encoding='utf-8-sig')
+        b64 = base64.b64encode(csv.encode()).decode()
+        href = f'<a href="data:file/csv;base64,{b64}" download="조배정결과.csv" class="download-button">📊 조 배정 결과 다운로드 (CSV)</a>'
+        st.markdown(href, unsafe_allow_html=True)
+    
+    with col3:
+        # 요약 보고서 다운로드 (CSV)
         csv_summary = summary_df.to_csv(index=False, encoding='utf-8-sig')
         b64_summary = base64.b64encode(csv_summary.encode()).decode()
-        href_summary = f'<a href="data:file/csv;base64,{b64_summary}" download="조별요약.csv" class="download-button">📋 요약 보고서 다운로드</a>'
+        href_summary = f'<a href="data:file/csv;base64,{b64_summary}" download="조별요약.csv" class="download-button">📋 요약 보고서 다운로드 (CSV)</a>'
         st.markdown(href_summary, unsafe_allow_html=True)
 
 if __name__ == "__main__":
