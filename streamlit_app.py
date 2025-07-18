@@ -85,6 +85,14 @@ def create_excel_download(df_assigned, summary_df):
             # 조별 상세 정보 시트 생성
             detailed_data = []
             for _, row in df_assigned.iterrows():
+                # 역할에 따라 다른 컬럼명 사용
+                if row['역할'] in ['조장', '헬퍼']:
+                    # 조장/헬퍼는 '학교/학년' 컬럼 사용
+                    school_info = row.get('학교', '')
+                else:
+                    # 조원은 '지역' 컬럼 사용
+                    school_info = row.get('지역', '')
+                
                 detailed_row = {
                     '조 번호': row['조 번호'],
                     '역할': row['역할'],
@@ -92,9 +100,8 @@ def create_excel_download(df_assigned, summary_df):
                     '성별': row['성별'],
                     '나이': row['나이'],
                     '학과': row['학과'],
-                    '학교': row['학교'],
-                    '지역': row['지역'],
-                    '전화번호': row.get('전화번호', ''),  # 전화번호 추가
+                    '학교/지역': school_info,  # 통합된 컬럼명
+                    '전화번호': row.get('전화번호', ''),
                     '학번': row.get('학번', ''),
                     '트랙': row.get('트랙', 'EBS')
                 }

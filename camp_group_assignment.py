@@ -317,8 +317,8 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
             '나이': group['leader'].get('나이', 0),
             '학교': group['leader'].get('학교/학년', ''),
             '성별': group['leader'].get('성별', ''),
-            '전화번호': group['leader'].get('전화번호', ''),
-            '트랙': group['leader'].get('트랙', 'EBS')
+            '전화번호': group['leader'].get('연락처', ''),
+            '트랙': 'EBS'
         })
         
         # 헬퍼
@@ -331,8 +331,8 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
             '나이': group['helper'].get('나이', 0),
             '학교': group['helper'].get('학교/학년', ''),
             '성별': group['helper'].get('성별', ''),
-            '전화번호': group['helper'].get('전화번호', ''),
-            '트랙': group['helper'].get('트랙', 'EBS')
+            '전화번호': group['helper'].get('연락처', ''),
+            '트랙': 'EBS'
         })
         
         # 조원들
@@ -344,9 +344,9 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
                 '학과': member.get('학과', ''),
                 '학번': member.get('학번', ''),
                 '나이': member.get('나이', 0),
-                '학교': member.get('캠퍼스', ''),
+                '지역': member.get('지역', ''),
                 '성별': member.get('성별', ''),
-                '전화번호': member.get('전화번호', ''),
+                '전화번호': member.get('연락처', ''),
                 '트랙': member.get('트랙', 'EBS')
             })
     
