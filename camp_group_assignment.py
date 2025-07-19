@@ -150,30 +150,30 @@ def can_assign_to_group(group: Dict, member: Dict, used_schools: set, used_regio
     
     # === 2단계: 최적화 조건 체크 (유연한 제한) ===
     
-    # 4. 성비 균형 체크 (전체 인원 대비 1명 차이까지 허용)
-    all_members = [group['leader'], group['helper']] + group['members']
-    male_count = sum(1 for m in all_members if m['성별'] == '남')
-    female_count = sum(1 for m in all_members if m['성별'] == '여')
+    # 4. 성비 균형 체크 (조원만 대상으로 계산)
+    # 조장/헬퍼는 고정이므로 조원만으로 성비 계산
+    member_male_count = sum(1 for m in group['members'] if m['성별'] == '남')
+    member_female_count = sum(1 for m in group['members'] if m['성별'] == '여')
     
     # 새 멤버 추가 시 성비 계산
     if member['성별'] == '남':
-        new_male = male_count + 1
-        new_female = female_count
+        new_male = member_male_count + 1
+        new_female = member_female_count
     else:
-        new_male = male_count
-        new_female = female_count + 1
+        new_male = member_male_count
+        new_female = member_female_count + 1
     
-    # 전체 인원 대비 성비 차이 계산
-    total_members = new_male + new_female
-    expected_male = total_members * total_gender_ratio
-    expected_female = total_members * (1 - total_gender_ratio)
+    # 조원 총 인원
+    total_member_count = new_male + new_female
     
-    # 성비 차이가 설정값을 초과하면 배정 제한
-    male_diff = abs(new_male - expected_male)
-    female_diff = abs(new_female - expected_female)
-    
-    if male_diff > max_gender_diff or female_diff > max_gender_diff:
-        return False
+    # 조원만의 성비가 너무 극단적이면 제한 (예: 한 성별이 80% 이상)
+    if total_member_count > 0:
+        male_ratio = new_male / total_member_count
+        female_ratio = new_female / total_member_count
+        
+        # 한 성별이 80% 이상이면 배정 제한 (너무 극단적인 성비 방지)
+        if male_ratio > 0.8 or female_ratio > 0.8:
+            return False
     
     return True
 
@@ -181,9 +181,13 @@ def calculate_group_stats(group: Dict) -> Dict:
     """조별 통계 계산"""
     all_members = [group['leader'], group['helper']] + group['members']
     
-    # 성별 통계
+    # 성별 통계 (전체)
     male_count = sum(1 for m in all_members if m['성별'] == '남')
     female_count = sum(1 for m in all_members if m['성별'] == '여')
+    
+    # 조원만의 성별 통계
+    member_male_count = sum(1 for m in group['members'] if m['성별'] == '남')
+    member_female_count = sum(1 for m in group['members'] if m['성별'] == '여')
     
     # 학과별 통계
     majors = [extract_major(m.get('학과', '')) for m in all_members]
@@ -198,7 +202,7 @@ def calculate_group_stats(group: Dict) -> Dict:
         '의대24_25_분리': True,  # 기본적으로 True (can_assign에서 체크됨)
         '같은학교_금지': True,   # 기본적으로 True (can_assign에서 체크됨)
         '나이_조건': True,       # 기본적으로 True (can_assign에서 체크됨)
-        '성비_균형': abs(male_count - female_count) <= 2,  # 남녀 차이가 2명 이하
+        '성비_균형': abs(member_male_count - member_female_count) <= 2,  # 조원만 대상으로 남녀 차이가 2명 이하
         '학과_분포': all(count >= 2 or count == 0 for major, count in major_counts.items() 
                         if major in ['의대', '치대', '한의대', '간호대']) or 
              all(major not in ['의대', '치대', '한의대', '간호대'] for major in major_counts.keys()),
@@ -208,6 +212,8 @@ def calculate_group_stats(group: Dict) -> Dict:
     return {
         'male_count': male_count,
         'female_count': female_count,
+        'member_male_count': member_male_count,
+        'member_female_count': member_female_count,
         'total_count': len(all_members),
         'major_distribution': dict(major_counts),
         'region_distribution': dict(region_counts),
@@ -574,42 +580,35 @@ def assign_groups(leaders: pd.DataFrame, members: pd.DataFrame, min_members: int
     return pd.DataFrame(rows)
 
 def calculate_gender_balance_score(group: Dict, new_member: Dict, total_gender_ratio: float) -> float:
-    """조에 새로운 멤버를 추가했을 때의 성비 균형 점수 계산"""
-    all_members = [group['leader'], group['helper']] + group['members']
-    male_count = sum(1 for m in all_members if m['성별'] == '남')
-    female_count = sum(1 for m in all_members if m['성별'] == '여')
+    """조에 새로운 멤버를 추가했을 때의 성비 균형 점수 계산 (조원만 대상)"""
+    # 조원만 대상으로 성비 계산 (조장/헬퍼 제외)
+    member_male_count = sum(1 for m in group['members'] if m['성별'] == '남')
+    member_female_count = sum(1 for m in group['members'] if m['성별'] == '여')
     
     # 새 멤버 추가 시 성비 계산
     if new_member['성별'] == '남':
-        new_male = male_count + 1
-        new_female = female_count
+        new_male = member_male_count + 1
+        new_female = member_female_count
     else:
-        new_male = male_count
-        new_female = female_count + 1
+        new_male = member_male_count
+        new_female = member_female_count + 1
     
-    total_members = new_male + new_female
+    total_member_count = new_male + new_female
     
-    # 전체 인원 대비 성비 차이 계산
-    expected_male = total_members * total_gender_ratio
-    expected_female = total_members * (1 - total_gender_ratio)
+    if total_member_count == 0:
+        return 1.0  # 첫 번째 조원
     
-    male_diff = abs(new_male - expected_male)
-    female_diff = abs(new_female - expected_female)
+    # 조원 성비 계산
+    current_male_ratio = new_male / total_member_count
+    current_female_ratio = new_female / total_member_count
     
-    # 성비 차이가 작을수록 높은 점수
-    max_diff = max(male_diff, female_diff)
+    # 균형 점수 계산 (50:50에 가까울수록 높은 점수)
+    balance_ratio = min(current_male_ratio, current_female_ratio)  # 더 작은 비율
+    balance_score = balance_ratio * 2  # 0.5일 때 1.0, 0.4일 때 0.8, 0.3일 때 0.6
     
-    # 성비 균형 점수 (차이가 0이면 1.0, 차이가 클수록 낮은 점수)
-    if max_diff == 0:
-        balance_score = 1.0
-    elif max_diff <= 0.5:
-        balance_score = 0.9
-    elif max_diff <= 1.0:
-        balance_score = 0.7
-    elif max_diff <= 1.5:
-        balance_score = 0.5
-    else:
-        balance_score = 0.1  # 1.5명 이상 차이나면 매우 낮은 점수
+    # 극단적인 성비 방지 (한 성별이 80% 이상이면 낮은 점수)
+    if current_male_ratio > 0.8 or current_female_ratio > 0.8:
+        balance_score *= 0.3  # 극단적인 성비는 30% 점수만
     
     return balance_score
 
@@ -680,34 +679,27 @@ def calculate_region_diversity_score(group: Dict, new_member: Dict) -> float:
     return min(region_score / 5, 1.0)
 
 def calculate_group_gender_score(group: Dict, total_gender_ratio: float) -> float:
-    """조의 현재 성비 균형 점수 계산"""
-    all_members = [group['leader'], group['helper']] + group['members']
-    male_count = sum(1 for m in all_members if m['성별'] == '남')
-    female_count = sum(1 for m in all_members if m['성별'] == '여')
+    """조의 현재 성비 균형 점수 계산 (조원만 대상)"""
+    # 조원만 대상으로 성비 계산 (조장/헬퍼 제외)
+    member_male_count = sum(1 for m in group['members'] if m['성별'] == '남')
+    member_female_count = sum(1 for m in group['members'] if m['성별'] == '여')
     
-    total_members = male_count + female_count
+    total_member_count = member_male_count + member_female_count
     
-    # 전체 인원 대비 성비 차이 계산
-    expected_male = total_members * total_gender_ratio
-    expected_female = total_members * (1 - total_gender_ratio)
+    if total_member_count == 0:
+        return 1.0  # 조원이 없으면 기본 점수
     
-    male_diff = abs(male_count - expected_male)
-    female_diff = abs(female_count - expected_female)
+    # 조원 성비 계산
+    current_male_ratio = member_male_count / total_member_count
+    current_female_ratio = member_female_count / total_member_count
     
-    # 성비 차이가 작을수록 높은 점수
-    max_diff = max(male_diff, female_diff)
+    # 균형 점수 계산 (50:50에 가까울수록 높은 점수)
+    balance_ratio = min(current_male_ratio, current_female_ratio)  # 더 작은 비율
+    balance_score = balance_ratio * 2  # 0.5일 때 1.0, 0.4일 때 0.8, 0.3일 때 0.6
     
-    # 성비 균형 점수 (차이가 0이면 1.0, 차이가 클수록 낮은 점수)
-    if max_diff == 0:
-        balance_score = 1.0
-    elif max_diff <= 0.5:
-        balance_score = 0.9
-    elif max_diff <= 1.0:
-        balance_score = 0.7
-    elif max_diff <= 1.5:
-        balance_score = 0.5
-    else:
-        balance_score = 0.1  # 1.5명 이상 차이나면 매우 낮은 점수
+    # 극단적인 성비 방지 (한 성별이 80% 이상이면 낮은 점수)
+    if current_male_ratio > 0.8 or current_female_ratio > 0.8:
+        balance_score *= 0.3  # 극단적인 성비는 30% 점수만
     
     return balance_score
 
@@ -775,8 +767,8 @@ def generate_summary_report(groups: Dict, output_file: str):
                 'fail': '조원 중 헬퍼보다 나이가 많은 사람이 있습니다.'
             },
             '성비_균형': {
-                'pass': f'남녀 성비가 균형잡혀 있습니다 (남성: {stats["male_count"]}명, 여성: {stats["female_count"]}명, 차이: {abs(stats["male_count"] - stats["female_count"])}명).',
-                'fail': f'남녀 성비가 불균형합니다 (남성: {stats["male_count"]}명, 여성: {stats["female_count"]}명, 차이: {abs(stats["male_count"] - stats["female_count"])}명).'
+                'pass': f'남녀 성비가 균형잡혀 있습니다 (남성: {stats["member_male_count"]}명, 여성: {stats["member_female_count"]}명, 차이: {abs(stats["member_male_count"] - stats["member_female_count"])}명).',
+                'fail': f'남녀 성비가 불균형합니다 (남성: {stats["member_male_count"]}명, 여성: {stats["member_female_count"]}명, 차이: {abs(stats["member_male_count"] - stats["member_female_count"])}명).'
             },
             '학과_분포': {
                 'pass': f'학과 분포가 적절합니다: {stats["major_distribution"]}',
