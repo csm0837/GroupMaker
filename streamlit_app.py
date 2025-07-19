@@ -454,147 +454,69 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
     # 요약 테이블
     st.header("📋 조별 요약 통계")
     
-    # 툴팁 스타일 추가
-    st.markdown("""
-    <style>
-        .tooltip {
-            position: relative;
-            display: inline-block;
-            cursor: help;
-        }
-        .tooltip .tooltiptext {
-            visibility: hidden;
-            width: 350px;
-            background-color: #333;
-            color: #fff;
-            text-align: left;
-            border-radius: 8px;
-            padding: 12px;
-            position: absolute;
-            z-index: 1000;
-            bottom: 125%;
-            left: 50%;
-            margin-left: -175px;
-            opacity: 0;
-            transition: opacity 0.3s;
-            font-size: 13px;
-            line-height: 1.5;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-            white-space: pre-wrap;
-        }
-        .tooltip:hover .tooltiptext {
-            visibility: visible;
-            opacity: 1;
-        }
-        .condition-cell {
-            cursor: help;
-            padding: 8px 12px;
-            border-radius: 6px;
-            display: inline-block;
-            min-width: 40px;
-            text-align: center;
-            font-weight: bold;
-            margin: 2px;
-        }
-        .condition-pass-cell {
-            background: rgba(40, 167, 69, 0.15);
-            color: #28a745;
-            border: 2px solid #28a745;
-        }
-        .condition-fail-cell {
-            background: rgba(220, 53, 69, 0.15);
-            color: #dc3545;
-            border: 2px solid #dc3545;
-        }
-        .summary-table {
-            border-collapse: collapse;
-            width: 100%;
-            margin: 20px 0;
-        }
-        .summary-table th, .summary-table td {
-            border: 1px solid #ddd;
-            padding: 12px;
-            text-align: center;
-        }
-        .summary-table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-        }
-        .summary-table tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        .summary-table tr:hover {
-            background-color: #f0f0f0;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+    # Streamlit의 기본 데이터프레임을 사용하되, 조건별 상태를 간단하게 표시
+    # 상세 정보는 별도 섹션에서 표시
     
-    # 요약 테이블을 HTML로 생성하여 툴팁 포함
-    table_html = """
-    <table class="summary-table">
-        <thead>
-            <tr>
-                <th>조 번호</th>
-                <th>총 인원</th>
-                <th>남성</th>
-                <th>여성</th>
-    """
+    # 요약 데이터프레임에서 상세 정보 컬럼 제거
+    display_summary = summary_df.copy()
+    detail_columns = [col for col in display_summary.columns if col.endswith('_상세') or col.endswith('_설명')]
+    display_summary = display_summary.drop(columns=detail_columns)
     
-    # 조건별 헤더 추가
+    # 요약 데이터프레임 표시
+    st.dataframe(
+        display_summary,
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    # 조건별 상세 정보를 별도 섹션으로 표시
+    st.subheader("ℹ️ 조건별 상세 정보")
+    
+    # 각 조건별로 상세 정보를 expander로 표시
     for condition in conditions:
-        table_html += f'<th>{condition_names[condition]}</th>'
-    
-    table_html += """
-            </tr>
-        </thead>
-        <tbody>
-    """
-    
-    # 각 조별 데이터 추가
-    for _, row in summary_df.iterrows():
-        table_html += f"""
-            <tr>
-                <td><strong>조 {row['조 번호']}</strong></td>
-                <td>{row['총 인원']}</td>
-                <td>{row['남성']}</td>
-                <td>{row['여성']}</td>
-        """
+        condition_name = condition_names[condition]
         
-        # 조건별 상태와 툴팁 추가
-        for condition in conditions:
-            condition_status = row[condition]
+        with st.expander(f"📋 {condition_name} 상세 정보", expanded=False):
+            # 해당 조건의 상세 정보 컬럼명 찾기
             detail_col = f"{condition}_설명"
-            detail_info = row.get(detail_col, "상세 정보 없음")
             
-            status_class = "condition-pass-cell" if condition_status == '✓' else "condition-fail-cell"
-            status_icon = "✅" if condition_status == '✓' else "❌"
-            
-            table_html += f"""
-                <td>
-                    <div class="tooltip">
-                        <span class="condition-cell {status_class}">
-                            {status_icon}
-                        </span>
-                        <span class="tooltiptext">
-                            <strong>조 {row['조 번호']} - {condition_names[condition]}</strong><br><br>
-                            {detail_info}
-                        </span>
+            if detail_col in summary_df.columns:
+                # 각 조별로 조건 상태와 상세 정보 표시
+                for idx, row in summary_df.iterrows():
+                    group_num = row['조 번호']
+                    condition_status = row[condition]
+                    detail_info = row.get(detail_col, "상세 정보 없음")
+                    
+                    # 조건 상태에 따른 색상과 아이콘
+                    if condition_status == '✓':
+                        status_icon = "✅"
+                        status_color = "green"
+                        status_text = "통과"
+                    else:
+                        status_icon = "❌"
+                        status_color = "red"
+                        status_text = "실패"
+                    
+                    # 조별 정보를 카드 형태로 표시
+                    st.markdown(f"""
+                    <div style="
+                        background: {'rgba(40, 167, 69, 0.1)' if condition_status == '✓' else 'rgba(220, 53, 69, 0.1)'};
+                        border-left: 4px solid {'#28a745' if condition_status == '✓' else '#dc3545'};
+                        padding: 15px;
+                        margin: 10px 0;
+                        border-radius: 8px;
+                    ">
+                        <h4 style="margin: 0 0 10px 0; color: {'#28a745' if condition_status == '✓' else '#dc3545'};">
+                            {status_icon} 조 {group_num} - {status_text}
+                        </h4>
+                        <p style="margin: 0; line-height: 1.5;">{detail_info}</p>
                     </div>
-                </td>
-            """
-        
-        table_html += "</tr>"
-    
-    table_html += """
-        </tbody>
-    </table>
-    """
-    
-    # 테이블 표시
-    st.markdown(table_html, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
+            else:
+                st.warning(f"{condition_name}에 대한 상세 정보가 없습니다.")
     
     # 사용법 안내
-    st.info("💡 **사용법**: 각 조건의 ✅ 또는 ❌ 아이콘에 마우스를 올리면 상세 정보를 확인할 수 있습니다.")
+    st.info("💡 **사용법**: 각 조건의 expander를 클릭하여 상세 정보를 확인할 수 있습니다.")
     
     # 조별 상세 정보
     st.header("👥 조별 상세 정보")
