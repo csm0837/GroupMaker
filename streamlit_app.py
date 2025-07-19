@@ -42,6 +42,7 @@ st.markdown("""
         color: white;
         text-align: center;
         margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     }
     .group-card {
         background: rgba(255, 255, 255, 0.95);
@@ -49,23 +50,79 @@ st.markdown("""
         padding: 1.5rem;
         margin-bottom: 1rem;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        border-left: 4px solid #667eea;
     }
     .condition-pass {
         color: #28a745;
         font-weight: bold;
+        background: rgba(40, 167, 69, 0.1);
+        padding: 0.25rem 0.5rem;
+        border-radius: 5px;
     }
     .condition-fail {
         color: #dc3545;
         font-weight: bold;
+        background: rgba(220, 53, 69, 0.1);
+        padding: 0.25rem 0.5rem;
+        border-radius: 5px;
     }
     .download-button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 0.5rem 1rem;
+        padding: 0.75rem 1.5rem;
         border-radius: 25px;
         text-decoration: none;
         display: inline-block;
         margin: 0.5rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+    .download-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+    .stats-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+        border-left: 4px solid #28a745;
+    }
+    .member-info {
+        background: rgba(248, 249, 250, 0.8);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin: 0.5rem 0;
+        border-left: 3px solid #667eea;
+    }
+    .leader-info {
+        background: rgba(255, 193, 7, 0.1);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin: 0.5rem 0;
+        border-left: 3px solid #ffc107;
+    }
+    .helper-info {
+        background: rgba(23, 162, 184, 0.1);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin: 0.5rem 0;
+        border-left: 3px solid #17a2b8;
+    }
+    .progress-container {
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 1rem 0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+    .metric-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        border-radius: 10px;
+        padding: 1rem;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        border: 1px solid #e9ecef;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -202,50 +259,85 @@ def main():
             return
         
         try:
-            with st.spinner("조 배정을 진행하고 있습니다..."):
-                # 임시 파일로 저장
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_leaders:
-                    tmp_leaders.write(leaders_file.getvalue())
-                    leaders_path = tmp_leaders.name
-                
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_members:
-                    tmp_members.write(members_file.getvalue())
-                    members_path = tmp_members.name
-                
-                # 데이터 로드
-                leaders, members = load_data(leaders_path, members_path)
-                
-                # 조 배정 실행
-                df_assigned = assign_groups(leaders, members, min_members, max_members, max_gender_diff)
-                
-                # 그룹 정보 재구성
-                groups = {}
-                for _, row in df_assigned.iterrows():
-                    grp_num = row['조 번호']
-                    if grp_num not in groups:
-                        groups[grp_num] = {
-                            '조 번호': grp_num,
-                            'leader': None,
-                            'helper': None,
-                            'members': []
-                        }
+            # 진행 상황 표시
+            progress_container = st.container()
+            
+            with progress_container:
+                st.markdown("""
+                <div class="progress-container">
+                    <h4>🔄 조 배정 진행 상황</h4>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # 1단계: 파일 처리
+            with progress_container:
+                with st.spinner("📁 파일 처리 중..."):
+                    # 임시 파일로 저장
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_leaders:
+                        tmp_leaders.write(leaders_file.getvalue())
+                        leaders_path = tmp_leaders.name
                     
-                    if row['역할'] == '조장':
-                        groups[grp_num]['leader'] = row.to_dict()
-                    elif row['역할'] == '헬퍼':
-                        groups[grp_num]['helper'] = row.to_dict()
-                    else:
-                        groups[grp_num]['members'].append(row.to_dict())
-                
-                # 요약 보고서 생성
-                summary_df = generate_summary_report(groups, "temp_output.csv")
-                
-                # 임시 파일 삭제
-                os.unlink(leaders_path)
-                os.unlink(members_path)
-                
-                # 결과 표시
-                display_results(groups, summary_df, df_assigned, min_members, max_members, max_gender_diff)
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_members:
+                        tmp_members.write(members_file.getvalue())
+                        members_path = tmp_members.name
+                    
+                    st.success("✅ 파일 처리 완료")
+            
+            # 2단계: 데이터 로드
+            with progress_container:
+                with st.spinner("📊 데이터 로드 중..."):
+                    leaders, members = load_data(leaders_path, members_path)
+                    st.success(f"✅ 데이터 로드 완료 (조장/헬퍼: {len(leaders)}명, 조원: {len(members)}명)")
+            
+            # 3단계: 조 배정 실행
+            with progress_container:
+                with st.spinner("🎯 조 배정 알고리즘 실행 중..."):
+                    df_assigned = assign_groups(leaders, members, min_members, max_members, max_gender_diff)
+                    st.success("✅ 조 배정 완료")
+            
+            # 4단계: 결과 처리
+            with progress_container:
+                with st.spinner("📋 결과 정리 중..."):
+                    # 그룹 정보 재구성
+                    groups = {}
+                    for _, row in df_assigned.iterrows():
+                        grp_num = row['조 번호']
+                        if grp_num not in groups:
+                            groups[grp_num] = {
+                                '조 번호': grp_num,
+                                'leader': None,
+                                'helper': None,
+                                'members': []
+                            }
+                        
+                        if row['역할'] == '조장':
+                            groups[grp_num]['leader'] = row.to_dict()
+                        elif row['역할'] == '헬퍼':
+                            groups[grp_num]['helper'] = row.to_dict()
+                        else:
+                            groups[grp_num]['members'].append(row.to_dict())
+                    
+                    # 요약 보고서 생성
+                    summary_df = generate_summary_report(groups, "temp_output.csv")
+                    st.success("✅ 결과 정리 완료")
+            
+            # 5단계: 임시 파일 정리
+            with progress_container:
+                with st.spinner("🧹 임시 파일 정리 중..."):
+                    os.unlink(leaders_path)
+                    os.unlink(members_path)
+                    st.success("✅ 임시 파일 정리 완료")
+            
+            # 진행 상황 완료 표시
+            with progress_container:
+                st.markdown("""
+                <div class="progress-container" style="background: rgba(40, 167, 69, 0.1); border-left: 4px solid #28a745;">
+                    <h4>🎉 조 배정이 성공적으로 완료되었습니다!</h4>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # 결과 표시
+            display_results(groups, summary_df, df_assigned, min_members, max_members, max_gender_diff)
                 
         except Exception as e:
             st.error(f"조 배정 중 오류가 발생했습니다: {str(e)}")
@@ -254,29 +346,113 @@ def main():
 def display_results(groups, summary_df, df_assigned, min_members, max_members, max_gender_diff):
     """결과 표시"""
     
-    st.success("🎉 조 배정이 완료되었습니다!")
-    
     # 요약 정보
     st.header("📊 배정 요약")
     
+    # 메트릭 카드 스타일로 표시
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("총 조 수", len(groups))
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>📋 총 조 수</h3>
+            <h2 style="color: #667eea;">{len(groups)}</h2>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col2:
         total_members = sum(len(group['members']) for group in groups.values())
-        st.metric("총 조원 수", total_members)
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>👥 총 조원 수</h3>
+            <h2 style="color: #28a745;">{total_members}</h2>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col3:
-        st.metric("조원 범위", f"{min_members}-{max_members}명")
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>📏 조원 범위</h3>
+            <h2 style="color: #ffc107;">{min_members}-{max_members}명</h2>
+        </div>
+        """, unsafe_allow_html=True)
     
     with col4:
         avg_members = total_members / len(groups) if groups else 0
-        st.metric("평균 조원 수", f"{avg_members:.1f}명")
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>📊 평균 조원 수</h3>
+            <h2 style="color: #17a2b8;">{avg_members:.1f}명</h2>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # 조건별 만족 현황
+    st.header("✅ 조건별 만족 현황")
+    
+    conditions = ['의대24_25_분리', '같은학교_금지', '나이_조건', '성비_균형', '학과_분포', '지역_다양성']
+    condition_names = {
+        '의대24_25_분리': '의대 24/25학번 분리',
+        '같은학교_금지': '같은 학교 금지',
+        '나이_조건': '나이 조건',
+        '성비_균형': '성비 균형',
+        '학과_분포': '학과 분포',
+        '지역_다양성': '지역 다양성'
+    }
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        for condition in conditions[:3]:
+            pass_count = sum(1 for _, row in summary_df.iterrows() if row[condition] == '✓')
+            total_count = len(summary_df)
+            percentage = pass_count/total_count*100 if total_count > 0 else 0
+            
+            # 조건별 색상 설정
+            if percentage >= 80:
+                color = "#28a745"
+                bg_color = "rgba(40, 167, 69, 0.1)"
+            elif percentage >= 60:
+                color = "#ffc107"
+                bg_color = "rgba(255, 193, 7, 0.1)"
+            else:
+                color = "#dc3545"
+                bg_color = "rgba(220, 53, 69, 0.1)"
+            
+            st.markdown(f"""
+            <div class="stats-card" style="border-left-color: {color}; background: {bg_color};">
+                <h4>{condition_names[condition]}</h4>
+                <h3 style="color: {color};">{pass_count}/{total_count}</h3>
+                <p style="color: {color}; font-weight: bold;">{percentage:.1f}%</p>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col2:
+        for condition in conditions[3:]:
+            pass_count = sum(1 for _, row in summary_df.iterrows() if row[condition] == '✓')
+            total_count = len(summary_df)
+            percentage = pass_count/total_count*100 if total_count > 0 else 0
+            
+            # 조건별 색상 설정
+            if percentage >= 80:
+                color = "#28a745"
+                bg_color = "rgba(40, 167, 69, 0.1)"
+            elif percentage >= 60:
+                color = "#ffc107"
+                bg_color = "rgba(255, 193, 7, 0.1)"
+            else:
+                color = "#dc3545"
+                bg_color = "rgba(220, 53, 69, 0.1)"
+            
+            st.markdown(f"""
+            <div class="stats-card" style="border-left-color: {color}; background: {bg_color};">
+                <h4>{condition_names[condition]}</h4>
+                <h3 style="color: {color};">{pass_count}/{total_count}</h3>
+                <p style="color: {color}; font-weight: bold;">{percentage:.1f}%</p>
+            </div>
+            """, unsafe_allow_html=True)
     
     # 요약 테이블
-    st.subheader("📋 조별 요약 통계")
+    st.header("📋 조별 요약 통계")
     
     # 요약 데이터프레임 표시
     st.dataframe(
@@ -285,44 +461,17 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
         hide_index=True
     )
     
-    # 조건별 만족 현황
-    st.subheader("✅ 조건별 만족 현황")
-    
-    conditions = ['의대24_25_분리', '같은학교_금지', '나이_조건', '성비_균형', '학과_분포', '지역_다양성']
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        for condition in conditions[:3]:
-            pass_count = sum(1 for _, row in summary_df.iterrows() if row[condition] == '✓')
-            total_count = len(summary_df)
-            st.metric(
-                condition.replace('_', ' '),
-                f"{pass_count}/{total_count}",
-                f"{pass_count/total_count*100:.1f}%"
-            )
-    
-    with col2:
-        for condition in conditions[3:]:
-            pass_count = sum(1 for _, row in summary_df.iterrows() if row[condition] == '✓')
-            total_count = len(summary_df)
-            st.metric(
-                condition.replace('_', ' '),
-                f"{pass_count}/{total_count}",
-                f"{pass_count/total_count*100:.1f}%"
-            )
-    
     # 조별 상세 정보
     st.header("👥 조별 상세 정보")
     
     for group_num in sorted(groups.keys()):
         group = groups[group_num]
         
-        with st.expander(f"조 {group_num} (총 {len(group['members'])}명)"):
+        with st.expander(f"조 {group_num} (총 {len(group['members'])}명)", expanded=False):
             col1, col2 = st.columns([2, 1])
             
             with col1:
-                st.subheader("조원 목록")
+                st.subheader("👥 조원 목록")
                 
                 # 조장
                 leader = group['leader']
@@ -340,7 +489,11 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
                 if phone:
                     leader_info += f" | 📞 {phone}"
                 
-                st.markdown(leader_info)
+                st.markdown(f"""
+                <div class="leader-info">
+                    {leader_info}
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # 헬퍼
                 helper = group['helper']
@@ -358,7 +511,11 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
                 if phone:
                     helper_info += f" | 📞 {phone}"
                 
-                st.markdown(helper_info)
+                st.markdown(f"""
+                <div class="helper-info">
+                    {helper_info}
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # 조원들
                 for i, member in enumerate(group['members'], 1):
@@ -383,24 +540,66 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
                     if phone:
                         member_info += f" | 📞 {phone}"
                     
-                    st.markdown(member_info)
+                    st.markdown(f"""
+                    <div class="member-info">
+                        {member_info}
+                    </div>
+                    """, unsafe_allow_html=True)
             
             with col2:
-                st.subheader("조 통계")
+                st.subheader("📊 조 통계")
                 stats = calculate_group_stats(group)
                 
-                st.metric("총 인원", stats['total_count'])
-                st.metric("남성", stats['male_count'])
-                st.metric("여성", stats['female_count'])
+                # 통계 카드들
+                st.markdown(f"""
+                <div class="stats-card">
+                    <h4>👥 총 인원</h4>
+                    <h3 style="color: #667eea;">{stats['total_count']}명</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div class="stats-card">
+                    <h4>👨 남성</h4>
+                    <h3 style="color: #007bff;">{stats['male_count']}명</h3>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown(f"""
+                <div class="stats-card">
+                    <h4>👩 여성</h4>
+                    <h3 style="color: #e83e8c;">{stats['female_count']}명</h3>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # 조건 만족 여부
-                st.subheader("조건 만족")
+                st.subheader("✅ 조건 만족")
                 for condition in conditions:
                     status = "✅" if stats['conditions_met'][condition] else "❌"
-                    st.markdown(f"{status} {condition.replace('_', ' ')}")
+                    condition_name = condition_names[condition]
+                    
+                    if stats['conditions_met'][condition]:
+                        st.markdown(f"""
+                        <div class="condition-pass">
+                            {status} {condition_name}
+                        </div>
+                        """, unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"""
+                        <div class="condition-fail">
+                            {status} {condition_name}
+                        </div>
+                        """, unsafe_allow_html=True)
     
     # 다운로드 섹션
-    st.header("📥 결과 다운로드")
+    st.header("�� 결과 다운로드")
+    
+    st.markdown("""
+    <div class="progress-container">
+        <h4>💾 다운로드 옵션</h4>
+        <p>조 배정 결과를 다양한 형식으로 다운로드할 수 있습니다.</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns(3)
     
@@ -408,6 +607,7 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
         # 엑셀 파일 다운로드 (전체 결과)
         excel_href = create_excel_download(df_assigned, summary_df)
         st.markdown(excel_href, unsafe_allow_html=True)
+        st.info("📊 엑셀 파일에는 조배정결과, 조별요약, 상세정보 시트가 포함됩니다.")
     
     with col2:
         # 조 배정 결과 다운로드 (CSV)
@@ -415,6 +615,7 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
         b64 = base64.b64encode(csv.encode()).decode()
         href = f'<a href="data:file/csv;base64,{b64}" download="조배정결과.csv" class="download-button">📊 조 배정 결과 다운로드 (CSV)</a>'
         st.markdown(href, unsafe_allow_html=True)
+        st.info("📋 CSV 형식으로 조 배정 결과를 다운로드합니다.")
     
     with col3:
         # 요약 보고서 다운로드 (CSV)
@@ -422,6 +623,7 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
         b64_summary = base64.b64encode(csv_summary.encode()).decode()
         href_summary = f'<a href="data:file/csv;base64,{b64_summary}" download="조별요약.csv" class="download-button">📋 요약 보고서 다운로드 (CSV)</a>'
         st.markdown(href_summary, unsafe_allow_html=True)
+        st.info("📈 조별 요약 통계를 CSV 형식으로 다운로드합니다.")
 
 if __name__ == "__main__":
     main() 
