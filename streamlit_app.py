@@ -37,92 +37,166 @@ st.markdown("""
 <style>
     .main-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 15px;
+        padding: 1rem;
+        border-radius: 8px;
         color: white;
         text-align: center;
-        margin-bottom: 2rem;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    .main-header h1 {
+        font-size: 1.5rem;
+        margin: 0;
+    }
+    .main-header p {
+        font-size: 0.9rem;
+        margin: 0.5rem 0 0 0;
+        opacity: 0.9;
     }
     .group-card {
         background: rgba(255, 255, 255, 0.95);
-        border-radius: 15px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-        border-left: 4px solid #667eea;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-left: 3px solid #667eea;
     }
     .condition-pass {
         color: #28a745;
         font-weight: bold;
         background: rgba(40, 167, 69, 0.1);
-        padding: 0.25rem 0.5rem;
-        border-radius: 5px;
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
     }
     .condition-fail {
         color: #dc3545;
         font-weight: bold;
         background: rgba(220, 53, 69, 0.1);
-        padding: 0.25rem 0.5rem;
-        border-radius: 5px;
+        padding: 0.2rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
     }
     .download-button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 25px;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
         text-decoration: none;
         display: inline-block;
-        margin: 0.5rem;
+        margin: 0.25rem;
         transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        font-size: 0.8rem;
     }
     .download-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
     .stats-card {
         background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 0.5rem 0;
-        border-left: 4px solid #28a745;
+        border-radius: 6px;
+        padding: 0.5rem;
+        margin: 0.25rem 0;
+        border-left: 3px solid #28a745;
+    }
+    .stats-card h4 {
+        font-size: 0.8rem;
+        margin: 0 0 0.25rem 0;
+    }
+    .stats-card h3 {
+        font-size: 1rem;
+        margin: 0;
     }
     .member-info {
         background: rgba(248, 249, 250, 0.8);
-        border-radius: 8px;
-        padding: 0.75rem;
-        margin: 0.5rem 0;
-        border-left: 3px solid #667eea;
+        border-radius: 6px;
+        padding: 0.5rem;
+        margin: 0.25rem 0;
+        border-left: 2px solid #667eea;
+        font-size: 0.85rem;
     }
     .leader-info {
         background: rgba(255, 193, 7, 0.1);
-        border-radius: 8px;
-        padding: 0.75rem;
-        margin: 0.5rem 0;
-        border-left: 3px solid #ffc107;
+        border-radius: 6px;
+        padding: 0.5rem;
+        margin: 0.25rem 0;
+        border-left: 2px solid #ffc107;
+        font-size: 0.85rem;
     }
     .helper-info {
         background: rgba(23, 162, 184, 0.1);
-        border-radius: 8px;
-        padding: 0.75rem;
-        margin: 0.5rem 0;
-        border-left: 3px solid #17a2b8;
+        border-radius: 6px;
+        padding: 0.5rem;
+        margin: 0.25rem 0;
+        border-left: 2px solid #17a2b8;
+        font-size: 0.85rem;
     }
     .progress-container {
         background: rgba(255, 255, 255, 0.9);
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        border-radius: 6px;
+        padding: 0.5rem;
+        margin: 0.5rem 0;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    }
+    .progress-container h4 {
+        font-size: 0.9rem;
+        margin: 0 0 0.25rem 0;
     }
     .metric-card {
         background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-        border-radius: 10px;
-        padding: 1rem;
+        border-radius: 6px;
+        padding: 0.5rem;
         text-align: center;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
         border: 1px solid #e9ecef;
+    }
+    .metric-card h3 {
+        font-size: 0.8rem;
+        margin: 0 0 0.25rem 0;
+        color: #6c757d;
+    }
+    .metric-card h2 {
+        font-size: 1.2rem;
+        margin: 0;
+    }
+    .condition-detail-card {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 6px;
+        padding: 0.75rem;
+        margin: 0.5rem 0;
+        border-left: 3px solid;
+        font-size: 0.85rem;
+    }
+    .condition-detail-card h4 {
+        font-size: 0.9rem;
+        margin: 0 0 0.5rem 0;
+    }
+    .condition-detail-card p {
+        font-size: 0.8rem;
+        margin: 0;
+        line-height: 1.4;
+    }
+    .stExpander {
+        border-radius: 6px;
+        border: 1px solid #e9ecef;
+    }
+    .stExpander > div > div {
+        padding: 0.5rem;
+    }
+    .stDataFrame {
+        font-size: 0.8rem;
+    }
+    .stMarkdown {
+        font-size: 0.9rem;
+    }
+    .stHeader {
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+    }
+    .stSubheader {
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -499,17 +573,11 @@ def display_results(groups, summary_df, df_assigned, min_members, max_members, m
                     
                     # 조별 정보를 카드 형태로 표시
                     st.markdown(f"""
-                    <div style="
-                        background: {'rgba(40, 167, 69, 0.1)' if condition_status == '✓' else 'rgba(220, 53, 69, 0.1)'};
-                        border-left: 4px solid {'#28a745' if condition_status == '✓' else '#dc3545'};
-                        padding: 15px;
-                        margin: 10px 0;
-                        border-radius: 8px;
-                    ">
-                        <h4 style="margin: 0 0 10px 0; color: {'#28a745' if condition_status == '✓' else '#dc3545'};">
+                    <div class="condition-detail-card" style="border-left-color: {'#28a745' if condition_status == '✓' else '#dc3545'};">
+                        <h4 style="margin: 0 0 0.5rem 0; color: {'#28a745' if condition_status == '✓' else '#dc3545'};">
                             {status_icon} 조 {group_num} - {status_text}
                         </h4>
-                        <p style="margin: 0; line-height: 1.5;">{detail_info}</p>
+                        <p style="margin: 0; line-height: 1.4;">{detail_info}</p>
                     </div>
                     """, unsafe_allow_html=True)
             else:
